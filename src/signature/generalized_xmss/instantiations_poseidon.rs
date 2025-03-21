@@ -815,3 +815,78 @@ pub mod lifetime_2_to_the_20 {
         }
     }
 }
+
+
+
+
+///// TEST LARGER LIFETIMES
+
+
+/// Instantiations with Lifetime 2^26
+pub mod lifetime_2_to_the_26 {
+
+
+    /// Instantiations based on the target sum encoding
+    pub mod target_sum {
+        use crate::{
+            inc_encoding::target_sum::TargetSumEncoding,
+            signature::generalized_xmss::GeneralizedXMSSSignatureScheme,
+            symmetric::{
+                message_hash::poseidon::PoseidonMessageHash, prf::shake_to_field::ShakePRFtoF,
+                tweak_hash::poseidon::PoseidonTweakHash,
+            },
+        };
+
+        const LOG_LIFETIME: usize = 26;
+        const PARAMETER_LEN: usize = 5;
+        const HASH_LEN_FE: usize = 7;
+        const MSG_HASH_LEN_FE: usize = 5;
+        const MSG_LEN_FE: usize = 9;
+        const TWEAK_LEN_FE: usize = 2;
+        const RAND_LEN: usize = 6;
+        const CAPACITY: usize = 9;
+
+
+
+        const CHUNK_SIZE_W2: usize = 2;
+        const NUM_CHUNKS_W2: usize = 78;
+        const CEIL_LOG_NUM_CHAINS_W2: usize = 7;
+        type MHw2 = PoseidonMessageHash<
+            PARAMETER_LEN,
+            RAND_LEN,
+            MSG_HASH_LEN_FE,
+            NUM_CHUNKS_W2,
+            CHUNK_SIZE_W2,
+            TWEAK_LEN_FE,
+            MSG_LEN_FE,
+        >;
+        type THw2 = PoseidonTweakHash<
+            LOG_LIFETIME,
+            CEIL_LOG_NUM_CHAINS_W2,
+            CHUNK_SIZE_W2,
+            PARAMETER_LEN,
+            HASH_LEN_FE,
+            TWEAK_LEN_FE,
+            CAPACITY,
+            NUM_CHUNKS_W2,
+        >;
+        type PRFw2 = ShakePRFtoF<HASH_LEN_FE>;
+        type IEw2<const TARGET_SUM: usize> = TargetSumEncoding<MHw2, TARGET_SUM>;
+        pub type SIGTargetSumLifetime26W2Off10 =
+            GeneralizedXMSSSignatureScheme<PRFw2, IEw2<129>, THw2, LOG_LIFETIME>;
+
+
+
+        #[cfg(test)]
+        mod test {
+            use crate::signature::SignatureScheme;
+
+            use super::SIGTargetSumLifetime26W2Off10;
+            #[test]
+            pub fn test_w2_internal_consistency() {
+                SIGTargetSumLifetime26W2Off10::internal_consistency_check();
+            }
+
+        }
+    }
+}
