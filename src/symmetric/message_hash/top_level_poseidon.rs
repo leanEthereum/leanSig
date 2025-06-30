@@ -153,20 +153,17 @@ impl<
 
     #[cfg(test)]
     fn internal_consistency_check() {
-        // POS_OUTPUT_LEN_FE must be sufficiently large, compared to layer size
-        // TODO
-
         // POS_OUTPUT_LEN_FE must be a multiple of 8
         assert!(
             POS_OUTPUT_LEN_FE % 8 == 0,
             "Top Level Poseidon Message Hash: POS_OUTPUT_LEN_FE must be a multiple of 8"
         );
 
-        // number of iterations we require should fit in a field element
-        // for simplicity we require at most 2^8 iterations
+        // Number of iterations we require should fit in a field element
+        // For simplicity we require at most 2^8 iterations
         assert!(
-            POS_OUTPUT_LEN_FE / 8 < 1 << 8,
-            "Top Level Poseidon Message Hash: POS_OUTPUT_LEN_FE must be less then 2^8 "
+            (POS_OUTPUT_LEN_FE / 8) < 1 << 8,
+            "Top Level Poseidon Message Hash: POS_OUTPUT_LEN_FE / 8 must be less then 2^8 "
         );
 
         // FINAL_LAYER must be a valid layer
@@ -185,7 +182,7 @@ impl<
             "Poseidon Message Hash: Dimension must be at most 2^8"
         );
 
-        // how many bits can be represented by one field element
+        // How many bits can be represented by one field element
         let bits_per_fe = f64::floor(f64::log2(
             BigUint::from(FqConfig::MODULUS)
                 .to_string()
