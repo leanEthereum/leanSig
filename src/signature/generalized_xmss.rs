@@ -126,7 +126,7 @@ where
             .collect::<Vec<_>>();
 
         // now build a Merkle tree on top of the hashes of chain ends / public keys
-        let tree = HashTree::new(&parameter, chain_ends_hashes);
+        let tree = HashTree::new(rng, LOG_LIFETIME, 0, &parameter, chain_ends_hashes);
         let root = tree.root();
 
         // assemble public key and secret key
