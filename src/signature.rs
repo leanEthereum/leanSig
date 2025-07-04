@@ -22,7 +22,17 @@ pub trait SignatureScheme {
     const LIFETIME: u64;
 
     /// Generates a new key pair, returning the public and private keys.
-    fn gen<R: Rng>(rng: &mut R) -> (Self::PublicKey, Self::SecretKey);
+    ///
+    /// The key can sign with respect to all epochs in the range
+    /// `activation_epoch..activation_epoch+num_active_epochs`.
+    ///
+    /// The caller must ensure that this is a valid range, i.e., that
+    /// `activation_epoch+num_active_epochs <= LIFETIME`.
+    fn gen<R: Rng>(
+        rng: &mut R,
+        activation_epoch: usize,
+        num_active_epochs: usize,
+    ) -> (Self::PublicKey, Self::SecretKey);
 
     /// Signs a message and returns the signature.
     /// The signature is with respect to a given epoch.
@@ -62,7 +72,7 @@ mod test_templates {
         let mut rng = thread_rng();
 
         // Generate a key pair
-        let (pk, sk) = T::gen(&mut rng);
+        let (pk, sk) = T::gen(&mut rng, 0, T::LIFETIME as usize);
 
         // Sample random test message
         let mut message = [0u8; MESSAGE_LENGTH];
