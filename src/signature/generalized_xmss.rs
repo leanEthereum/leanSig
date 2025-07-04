@@ -78,7 +78,10 @@ where
         num_active_epochs: usize,
     ) -> (Self::PublicKey, Self::SecretKey) {
         // checks for `activation_epoch` and `num_active_epochs`
-        assert!(activation_epoch + num_active_epochs <= Self::LIFETIME as usize, "Key gen: `activation_epoch` and `num_active_epochs` are invalid for this lifetime");
+        assert!(
+            activation_epoch + num_active_epochs <= Self::LIFETIME as usize,
+            "Key gen: `activation_epoch` and `num_active_epochs` are invalid for this lifetime"
+        );
 
         // Note: this implementation first generates all one-time sk's
         // and one-time pk's and then computes a Merkle tree in one go.
