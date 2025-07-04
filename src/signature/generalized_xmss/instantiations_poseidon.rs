@@ -140,22 +140,22 @@ pub mod lifetime_2_to_the_18 {
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w1_correctness() {
-                _test_signature_scheme_correctness::<SIGWinternitzLifetime18W1>(1032);
+                _test_signature_scheme_correctness::<SIGWinternitzLifetime18W1>(1032, 0, 1 << 18);
             }
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w2_correctness() {
-                _test_signature_scheme_correctness::<SIGWinternitzLifetime18W2>(32);
+                _test_signature_scheme_correctness::<SIGWinternitzLifetime18W2>(32, 0, 1 << 18);
             }
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w4_correctness() {
-                _test_signature_scheme_correctness::<SIGWinternitzLifetime18W4>(2032);
+                _test_signature_scheme_correctness::<SIGWinternitzLifetime18W4>(2032, 0, 1 << 18);
             }
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w8_correctness() {
-                _test_signature_scheme_correctness::<SIGWinternitzLifetime18W8>(2142);
+                _test_signature_scheme_correctness::<SIGWinternitzLifetime18W8>(2142, 0, 1 << 18);
             }
         }
     }
@@ -325,26 +325,46 @@ pub mod lifetime_2_to_the_18 {
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w1_correctness() {
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W1NoOff>(1032);
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W1Off10>(32);
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W1NoOff>(
+                    1032,
+                    0,
+                    1 << 18,
+                );
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W1Off10>(32, 0, 1 << 18);
             }
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w2_correctness() {
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W2NoOff>(436);
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W2Off10>(312);
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W2NoOff>(
+                    436,
+                    0,
+                    1 << 18,
+                );
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W2Off10>(
+                    312,
+                    0,
+                    1 << 18,
+                );
             }
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w4_correctness() {
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W4NoOff>(21);
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W4Off10>(3211);
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W4NoOff>(21, 0, 1 << 18);
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W4Off10>(
+                    3211,
+                    0,
+                    1 << 18,
+                );
             }
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w8_correctness() {
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W8NoOff>(32);
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W8Off10>(768);
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W8NoOff>(32, 0, 1 << 18);
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime18W8Off10>(
+                    768,
+                    0,
+                    1 << 18,
+                );
             }
         }
     }
@@ -493,22 +513,22 @@ pub mod lifetime_2_to_the_20 {
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w1_correctness() {
-                _test_signature_scheme_correctness::<SIGWinternitzLifetime20W1>(1032);
+                _test_signature_scheme_correctness::<SIGWinternitzLifetime20W1>(1032, 0, 1 << 20);
             }
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w2_correctness() {
-                _test_signature_scheme_correctness::<SIGWinternitzLifetime20W2>(32);
+                _test_signature_scheme_correctness::<SIGWinternitzLifetime20W2>(32, 0, 1 << 20);
             }
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w4_correctness() {
-                _test_signature_scheme_correctness::<SIGWinternitzLifetime20W4>(2032);
+                _test_signature_scheme_correctness::<SIGWinternitzLifetime20W4>(2032, 0, 1 << 20);
             }
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w8_correctness() {
-                _test_signature_scheme_correctness::<SIGWinternitzLifetime20W8>(2142);
+                _test_signature_scheme_correctness::<SIGWinternitzLifetime20W8>(2142, 0, 1 << 20);
             }
         }
     }
@@ -679,26 +699,46 @@ pub mod lifetime_2_to_the_20 {
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w1_correctness() {
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W1NoOff>(1032);
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W1Off10>(32);
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W1NoOff>(
+                    1032,
+                    0,
+                    1 << 20,
+                );
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W1Off10>(32, 0, 1 << 20);
             }
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w2_correctness() {
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W2NoOff>(436);
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W2Off10>(312);
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W2NoOff>(
+                    436,
+                    0,
+                    1 << 20,
+                );
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W2Off10>(
+                    312,
+                    0,
+                    1 << 20,
+                );
             }
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w4_correctness() {
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W4NoOff>(21);
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W4Off10>(3211);
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W4NoOff>(21, 0, 1 << 20);
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W4Off10>(
+                    3211,
+                    0,
+                    1 << 20,
+                );
             }
             #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_w8_correctness() {
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W8NoOff>(32);
-                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W8Off10>(768);
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W8NoOff>(32, 0, 1 << 20);
+                _test_signature_scheme_correctness::<SIGTargetSumLifetime20W8Off10>(
+                    768,
+                    0,
+                    1 << 20,
+                );
             }
         }
     }

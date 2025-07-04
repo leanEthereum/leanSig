@@ -62,8 +62,16 @@ pub mod lifetime_2_to_the_18 {
         #[test]
         #[cfg(feature = "slow-tests")]
         pub fn test_correctness() {
-            _test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime18Dim40Base12>(213);
-            _test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime18Dim40Base12>(4);
+            _test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime18Dim40Base12>(
+                213,
+                0,
+                1 << 18,
+            );
+            _test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime18Dim40Base12>(
+                4,
+                0,
+                1 << 18,
+            );
         }
     }
 }
@@ -131,8 +139,16 @@ pub mod lifetime_2_to_the_26 {
         #[test]
         #[cfg(feature = "slow-tests")]
         pub fn test_correctness() {
-            _test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime26Dim64Base8>(213);
-            _test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime26Dim64Base8>(4);
+            _test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime26Dim64Base8>(
+                213,
+                0,
+                1 << 26,
+            );
+            _test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime26Dim64Base8>(
+                4,
+                0,
+                1 << 26,
+            );
         }
     }
 }

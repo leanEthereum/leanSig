@@ -68,11 +68,15 @@ mod test_templates {
     /// Generic test for any implementation of the `SignatureScheme` trait.
     /// Tests correctness, i.e., that honest key gen, honest signing, implies
     /// that the verifier accepts the signature. A random message is used.
-    pub fn _test_signature_scheme_correctness<T: SignatureScheme>(epoch: u32) {
+    pub fn _test_signature_scheme_correctness<T: SignatureScheme>(
+        epoch: u32,
+        activation_epoch: usize,
+        num_active_epochs: usize,
+    ) {
         let mut rng = thread_rng();
 
         // Generate a key pair
-        let (pk, sk) = T::gen(&mut rng, 0, T::LIFETIME as usize);
+        let (pk, sk) = T::gen(&mut rng, activation_epoch, num_active_epochs);
 
         // Sample random test message
         let mut message = [0u8; MESSAGE_LENGTH];
@@ -89,7 +93,7 @@ mod test_templates {
             epoch
         );
 
-        // Verify the signature.
+        // Verify the signature
         let signature = signature.unwrap();
         let is_valid = T::verify(&pk, epoch, &message, &signature);
         assert!(

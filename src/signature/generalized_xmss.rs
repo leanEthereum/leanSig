@@ -352,11 +352,11 @@ mod tests {
 
         SIG::internal_consistency_check();
 
-        _test_signature_scheme_correctness::<SIG>(289);
-        _test_signature_scheme_correctness::<SIG>(2);
-        _test_signature_scheme_correctness::<SIG>(19);
-        _test_signature_scheme_correctness::<SIG>(0);
-        _test_signature_scheme_correctness::<SIG>(11);
+        _test_signature_scheme_correctness::<SIG>(289, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(2, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(19, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(0, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(11, 0, SIG::LIFETIME as usize);
     }
 
     #[test]
@@ -374,10 +374,15 @@ mod tests {
 
         SIG::internal_consistency_check();
 
-        _test_signature_scheme_correctness::<SIG>(2);
-        _test_signature_scheme_correctness::<SIG>(19);
-        _test_signature_scheme_correctness::<SIG>(0);
-        _test_signature_scheme_correctness::<SIG>(11);
+        _test_signature_scheme_correctness::<SIG>(2, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(19, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(0, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(11, 0, SIG::LIFETIME as usize);
+
+        _test_signature_scheme_correctness::<SIG>(12, 10, (1 << 5) - 10);
+        _test_signature_scheme_correctness::<SIG>(19, 4, 20);
+        _test_signature_scheme_correctness::<SIG>(16, 16, 4);
+        _test_signature_scheme_correctness::<SIG>(11, 1, 29);
     }
 
     #[test]
@@ -396,11 +401,11 @@ mod tests {
 
         SIG::internal_consistency_check();
 
-        _test_signature_scheme_correctness::<SIG>(13);
-        _test_signature_scheme_correctness::<SIG>(9);
-        _test_signature_scheme_correctness::<SIG>(21);
-        _test_signature_scheme_correctness::<SIG>(0);
-        _test_signature_scheme_correctness::<SIG>(31);
+        _test_signature_scheme_correctness::<SIG>(13, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(9, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(21, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(0, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(31, 0, SIG::LIFETIME as usize);
     }
 
     #[test]
@@ -419,10 +424,10 @@ mod tests {
 
         SIG::internal_consistency_check();
 
-        _test_signature_scheme_correctness::<SIG>(2);
-        _test_signature_scheme_correctness::<SIG>(19);
-        _test_signature_scheme_correctness::<SIG>(0);
-        _test_signature_scheme_correctness::<SIG>(11);
+        _test_signature_scheme_correctness::<SIG>(2, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(19, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(0, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(11, 0, SIG::LIFETIME as usize);
     }
 
     #[test]
@@ -440,8 +445,8 @@ mod tests {
 
         SIG::internal_consistency_check();
 
-        _test_signature_scheme_correctness::<SIG>(0);
-        _test_signature_scheme_correctness::<SIG>(11);
+        _test_signature_scheme_correctness::<SIG>(0, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(11, 0, SIG::LIFETIME as usize);
     }
 
     #[test]
@@ -459,7 +464,7 @@ mod tests {
 
         SIG::internal_consistency_check();
 
-        _test_signature_scheme_correctness::<SIG>(2);
-        _test_signature_scheme_correctness::<SIG>(19);
+        _test_signature_scheme_correctness::<SIG>(2, 0, SIG::LIFETIME as usize);
+        _test_signature_scheme_correctness::<SIG>(19, 0, SIG::LIFETIME as usize);
     }
 }
