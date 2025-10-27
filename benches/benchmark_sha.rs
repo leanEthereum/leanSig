@@ -6,7 +6,7 @@ use rand::Rng;
 use hashsig::{
     MESSAGE_LENGTH,
     signature::{
-        SignatureScheme,
+        SignatureScheme, SignatureSchemeSecretKey,
         generalized_xmss::instantiations_sha::{
             lifetime_2_to_the_18::{
                 target_sum::{
@@ -61,13 +61,17 @@ pub fn benchmark_signature_scheme<S: SignatureScheme>(c: &mut Criterion, descrip
 
     let (pk, sk) = S::key_gen(&mut rng, 0, S::LIFETIME as usize);
 
+    // Get the prepared epoch interval to ensure we only sign at valid epochs
+    let prepared_interval = sk.get_prepared_interval();
+
     group.bench_function("- sign", |b| {
         b.iter(|| {
             // Sample random test message
             let message = rng.random();
 
-            // Sample random epoch
-            let epoch = rng.random_range(0..500) as u32;
+            // Sample random epoch within the prepared interval
+            let epoch =
+                rng.random_range(prepared_interval.start as u32..prepared_interval.end as u32);
 
             // Benchmark signing
             let _ = S::sign(black_box(&sk), black_box(epoch), black_box(&message));
@@ -78,7 +82,9 @@ pub fn benchmark_signature_scheme<S: SignatureScheme>(c: &mut Criterion, descrip
     let precomputed: Vec<(u32, [u8; MESSAGE_LENGTH], S::Signature)> = (0..2000)
         .map(|_| {
             let message = rng.random();
-            let epoch = rng.random_range(0..500) as u32;
+            // Use epochs within the prepared interval
+            let epoch =
+                rng.random_range(prepared_interval.start as u32..prepared_interval.end as u32);
             let signature = S::sign(&sk, epoch, &message).expect("Signing should succeed");
             (epoch, message, signature)
         })
