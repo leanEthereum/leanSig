@@ -1,9 +1,15 @@
 # Hash-Based Signatures in Rust
 
 This repository contains a *prototypical* Rust implementation of (synchronized) signatures based on tweakable hash functions and incomparable encodings.
-The code has not been audited and is not meant to be used in production. It is a playground to explore and benchmark these signatures. Use it at your own risk.
 
 *Note: Rust version >= 1.87 is required.*
+
+## Disclaimers
+
+The code has *not been audited and is not meant to be used in production*. It is a playground to explore and benchmark these signatures. Use it at your own risk.
+
+The implementation takes a generic RNG as input (e.g., `key_gen`, see below). Users must make sure that the RNG is *cryptographically secure*. 
+The examples below, tests, and benchmarks just use a default (potentially insecure) RNG for illustration.
 
 ## Signature Interface
 
