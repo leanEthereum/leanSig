@@ -9,6 +9,6 @@ use benchmark_poseidon_top_level::bench_function_poseidon_top_level;
 criterion_group!(
     benches,
     bench_function_poseidon_top_level,
-    // bench_function_poseidon
+    bench_function_poseidon
 );
 criterion_main!(benches);
