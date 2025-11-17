@@ -1,6 +1,8 @@
-# Hash-Based Signatures in Rust
+# LeanSig in Rust
 
 This repository contains a *prototypical* Rust implementation of (synchronized) signatures based on tweakable hash functions and incomparable encodings.
+It was originally developed in [this repository](https://github.com/b-wagn/hash-sig).
+
 
 *Note: Rust version >= 1.87 is required.*
 
