@@ -42,7 +42,6 @@ pub trait MessageHash {
 }
 
 pub mod poseidon;
-pub mod sha;
 pub mod top_level_poseidon;
 
 /// Splits a list of bytes into smaller fixed-size bit chunks.

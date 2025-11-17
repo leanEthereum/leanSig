@@ -74,16 +74,16 @@ pub fn chain<TH: TweakableHash>(
 }
 
 pub mod poseidon;
-pub mod sha;
 
 #[cfg(test)]
 mod tests {
-    use sha::ShaTweak128192;
+
+    use crate::symmetric::tweak_hash::poseidon::PoseidonTweak44;
 
     use super::*;
     use proptest::prelude::*;
 
-    type TestTH = ShaTweak128192;
+    type TestTH = PoseidonTweak44;
 
     #[test]
     fn test_chain_associative() {

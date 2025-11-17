@@ -553,95 +553,20 @@ pub mod instantiations_poseidon;
 /// Instantiations of the generalized XMSS signature scheme based on the
 /// top level target sum encoding using Poseidon2
 pub mod instantiations_poseidon_top_level;
-/// Instantiations of the generalized XMSS signature scheme based on SHA
-pub mod instantiations_sha;
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        inc_encoding::{basic_winternitz::WinternitzEncoding, target_sum::TargetSumEncoding},
+        inc_encoding::target_sum::TargetSumEncoding,
         signature::test_templates::test_signature_scheme_correctness,
         symmetric::{
-            message_hash::{
-                MessageHash,
-                poseidon::PoseidonMessageHashW1,
-                sha::{ShaMessageHash, ShaMessageHash192x3},
-            },
-            prf::{sha::ShaPRF, shake_to_field::ShakePRFtoF},
-            tweak_hash::{poseidon::PoseidonTweakW1L5, sha::ShaTweak192192},
+            message_hash::{MessageHash, poseidon::PoseidonMessageHashW1},
+            prf::shake_to_field::ShakePRFtoF,
+            tweak_hash::poseidon::PoseidonTweakW1L5,
         },
     };
 
     use super::*;
-
-    #[test]
-    pub fn test_winternitz() {
-        // Note: do not use these parameters, they are just for testing
-        type PRF = ShaPRF<24, 24>;
-        type TH = ShaTweak192192;
-        type MH = ShaMessageHash192x3;
-        const CHUNK_SIZE: usize = 4;
-        const NUM_CHUNKS_CHECKSUM: usize = 3;
-        type IE = WinternitzEncoding<MH, CHUNK_SIZE, NUM_CHUNKS_CHECKSUM>;
-        const LOG_LIFETIME: usize = 10;
-        type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
-
-        Sig::internal_consistency_check();
-        test_signature_scheme_correctness::<Sig>(289, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(2, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(19, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(0, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(11, 0, Sig::LIFETIME as usize);
-    }
-
-    #[test]
-    pub fn test_winternitz_poseidon() {
-        // Note: do not use these parameters, they are just for testing
-        type PRF = ShakePRFtoF<7, 5>;
-        type TH = PoseidonTweakW1L5;
-        type MH = PoseidonMessageHashW1;
-        const CHUNK_SIZE: usize = 1;
-        const _BASE: usize = 2;
-        const NUM_CHUNKS_CHECKSUM: usize = 8;
-        type IE = WinternitzEncoding<MH, CHUNK_SIZE, NUM_CHUNKS_CHECKSUM>;
-        const LOG_LIFETIME: usize = 6;
-        type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
-
-        Sig::internal_consistency_check();
-
-        test_signature_scheme_correctness::<Sig>(2, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(19, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(0, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(11, 0, Sig::LIFETIME as usize);
-
-        test_signature_scheme_correctness::<Sig>(12, 10, (1 << 5) - 10);
-        test_signature_scheme_correctness::<Sig>(19, 4, 20);
-        test_signature_scheme_correctness::<Sig>(16, 16, 4);
-        test_signature_scheme_correctness::<Sig>(11, 1, 29);
-    }
-
-    #[test]
-    pub fn test_target_sum() {
-        // Note: do not use these parameters, they are just for testing
-        type PRF = ShaPRF<24, 24>;
-        type TH = ShaTweak192192;
-        type MH = ShaMessageHash192x3;
-        const BASE: usize = MH::BASE;
-        const NUM_CHUNKS: usize = MH::DIMENSION;
-        const MAX_CHUNK_VALUE: usize = BASE - 1;
-        const EXPECTED_SUM: usize = NUM_CHUNKS * MAX_CHUNK_VALUE / 2;
-        type IE = TargetSumEncoding<MH, EXPECTED_SUM>;
-        const LOG_LIFETIME: usize = 8;
-        type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
-
-        Sig::internal_consistency_check();
-
-        test_signature_scheme_correctness::<Sig>(13, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(9, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(21, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(0, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(31, 0, Sig::LIFETIME as usize);
-    }
 
     #[test]
     pub fn test_target_sum_poseidon() {
@@ -707,7 +632,7 @@ mod tests {
         assert_eq!(rho1, rho2);
     }
 
-    #[test]
+    /*#[test]
     pub fn test_large_base_sha() {
         // Note: do not use these parameters, they are just for testing
         type PRF = ShaPRF<24, 8>;
@@ -743,7 +668,7 @@ mod tests {
 
         test_signature_scheme_correctness::<Sig>(2, 0, Sig::LIFETIME as usize);
         test_signature_scheme_correctness::<Sig>(19, 0, Sig::LIFETIME as usize);
-    }
+    }*/
 
     #[test]
     pub fn test_expand_activation_time() {

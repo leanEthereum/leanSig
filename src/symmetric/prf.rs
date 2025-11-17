@@ -31,5 +31,4 @@ pub trait Pseudorandom {
     fn internal_consistency_check();
 }
 
-pub mod sha;
 pub mod shake_to_field;
