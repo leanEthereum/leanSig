@@ -1,5 +1,4 @@
 use rand::Rng;
-use rayon::prelude::*;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::symmetric::prf::Pseudorandom;
@@ -60,33 +59,7 @@ pub trait TweakableHash {
     where
         PRF: Pseudorandom,
         PRF::Domain: Into<Self::Domain>,
-        Self: Sized,
-    {
-        // Default scalar implementation: process each epoch in parallel
-        epochs
-            .par_iter()
-            .map(|&epoch| {
-                // For each epoch, walk all chains in parallel
-                let chain_ends: Vec<_> = (0..num_chains)
-                    .into_par_iter()
-                    .map(|chain_index| {
-                        let start =
-                            PRF::get_domain_element(prf_key, epoch, chain_index as u64).into();
-                        chain::<Self>(
-                            parameter,
-                            epoch,
-                            chain_index as u8,
-                            0,
-                            chain_length - 1,
-                            &start,
-                        )
-                    })
-                    .collect();
-                // Hash all chain ends together to get the leaf
-                Self::apply(parameter, &Self::tree_tweak(0, epoch), &chain_ends)
-            })
-            .collect()
-    }
+        Self: Sized;
 
     /// Function to check internal consistency of any given parameters.
     ///
