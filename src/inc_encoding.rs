@@ -52,5 +52,4 @@ pub trait IncomparableEncoding {
     fn internal_consistency_check();
 }
 
-pub mod basic_winternitz;
 pub mod target_sum;

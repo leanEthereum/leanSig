@@ -8,29 +8,17 @@ use hashsig::{
     signature::{
         SignatureScheme, SignatureSchemeSecretKey,
         generalized_xmss::instantiations_poseidon::{
-            lifetime_2_to_the_18::{
-                target_sum::{
-                    SIGTargetSumLifetime18W1NoOff, SIGTargetSumLifetime18W1Off10,
-                    SIGTargetSumLifetime18W2NoOff, SIGTargetSumLifetime18W2Off10,
-                    SIGTargetSumLifetime18W4NoOff, SIGTargetSumLifetime18W4Off10,
-                    SIGTargetSumLifetime18W8NoOff, SIGTargetSumLifetime18W8Off10,
-                },
-                winternitz::{
-                    SIGWinternitzLifetime18W1, SIGWinternitzLifetime18W2,
-                    SIGWinternitzLifetime18W4, SIGWinternitzLifetime18W8,
-                },
+            lifetime_2_to_the_18::target_sum::{
+                SIGTargetSumLifetime18W1NoOff, SIGTargetSumLifetime18W1Off10,
+                SIGTargetSumLifetime18W2NoOff, SIGTargetSumLifetime18W2Off10,
+                SIGTargetSumLifetime18W4NoOff, SIGTargetSumLifetime18W4Off10,
+                SIGTargetSumLifetime18W8NoOff, SIGTargetSumLifetime18W8Off10,
             },
-            lifetime_2_to_the_20::{
-                target_sum::{
-                    SIGTargetSumLifetime20W1NoOff, SIGTargetSumLifetime20W1Off10,
-                    SIGTargetSumLifetime20W2NoOff, SIGTargetSumLifetime20W2Off10,
-                    SIGTargetSumLifetime20W4NoOff, SIGTargetSumLifetime20W4Off10,
-                    SIGTargetSumLifetime20W8NoOff, SIGTargetSumLifetime20W8Off10,
-                },
-                winternitz::{
-                    SIGWinternitzLifetime20W1, SIGWinternitzLifetime20W2,
-                    SIGWinternitzLifetime20W4, SIGWinternitzLifetime20W8,
-                },
+            lifetime_2_to_the_20::target_sum::{
+                SIGTargetSumLifetime20W1NoOff, SIGTargetSumLifetime20W1Off10,
+                SIGTargetSumLifetime20W2NoOff, SIGTargetSumLifetime20W2Off10,
+                SIGTargetSumLifetime20W4NoOff, SIGTargetSumLifetime20W4Off10,
+                SIGTargetSumLifetime20W8NoOff, SIGTargetSumLifetime20W8Off10,
             },
         },
     },
@@ -106,22 +94,6 @@ pub fn benchmark_signature_scheme<S: SignatureScheme>(c: &mut Criterion, descrip
     });
 
     group.finish();
-}
-
-/// Benchmarking Lifetime 2^18 for Winternitz Encoding
-fn bench_lifetime18_winternitz(c: &mut Criterion) {
-    benchmark_signature_scheme::<SIGWinternitzLifetime18W1>(c, "Winternitz, Lifetime 2^18, w = 1");
-    benchmark_signature_scheme::<SIGWinternitzLifetime18W2>(c, "Winternitz, Lifetime 2^18, w = 2");
-    benchmark_signature_scheme::<SIGWinternitzLifetime18W4>(c, "Winternitz, Lifetime 2^18, w = 4");
-    benchmark_signature_scheme::<SIGWinternitzLifetime18W8>(c, "Winternitz, Lifetime 2^18, w = 8");
-}
-
-/// Benchmarking Lifetime 2^20 for Winternitz Encoding
-fn bench_lifetime20_winternitz(c: &mut Criterion) {
-    benchmark_signature_scheme::<SIGWinternitzLifetime20W1>(c, "Winternitz, Lifetime 2^20, w = 1");
-    benchmark_signature_scheme::<SIGWinternitzLifetime20W2>(c, "Winternitz, Lifetime 2^20, w = 2");
-    benchmark_signature_scheme::<SIGWinternitzLifetime20W4>(c, "Winternitz, Lifetime 2^20, w = 4");
-    benchmark_signature_scheme::<SIGWinternitzLifetime20W8>(c, "Winternitz, Lifetime 2^20, w = 8");
 }
 
 /// Benchmarking Lifetime 2^18 for Target Sum Encoding
@@ -203,14 +175,8 @@ fn bench_lifetime20_target_sum(c: &mut Criterion) {
 }
 
 pub fn bench_function_poseidon(c: &mut Criterion) {
-    // benchmarking lifetime 2^18 - Winternitz
-    bench_lifetime18_winternitz(c);
-
     // benchmarking lifetime 2^18 - Target Sum
     bench_lifetime18_target_sum(c);
-
-    // benchmarking lifetime 2^20 - Winternitz
-    bench_lifetime20_winternitz(c);
 
     // benchmarking lifetime 2^20 - Target Sum
     bench_lifetime20_target_sum(c);
