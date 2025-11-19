@@ -1,7 +1,7 @@
 use core::array;
 
 use p3_field::{Algebra, PackedValue, PrimeCharacteristicRing, PrimeField64};
-use p3_symmetric::Permutation;
+use p3_symmetric::CryptographicPermutation;
 use rayon::prelude::*;
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -73,7 +73,7 @@ impl PoseidonTweak {
 /// Computes:
 ///     PoseidonCompress(x) = Truncate(PoseidonPermute(x) + x)
 ///
-/// This function works generically over `A: Algebra<F>`, allowing it to process both:
+/// This function works generically over `R: PrimeCharacteristicRing`, allowing it to process both:
 /// - Scalar fields,
 /// - Packed SIMD fields
 ///
@@ -81,7 +81,7 @@ impl PoseidonTweak {
 ///
 /// - `WIDTH`: total state width (input length to permutation).
 /// - `OUT_LEN`: number of output elements to return.
-/// - `perm`: a Poseidon permutation over `[A; WIDTH]`.
+/// - `perm`: a cryptographically secure Poseidon permutation over `[R; WIDTH]`.
 /// - `input`: slice of input values, must be `≤ WIDTH` and `≥ OUT_LEN`.
 ///
 /// ### Warning: Input Padding
@@ -96,13 +96,13 @@ impl PoseidonTweak {
 /// Panics:
 /// - If `input.len() < OUT_LEN`
 /// - If `OUT_LEN > WIDTH`
-pub fn poseidon_compress<A, P, const WIDTH: usize, const OUT_LEN: usize>(
+pub fn poseidon_compress<R, P, const WIDTH: usize, const OUT_LEN: usize>(
     perm: &P,
-    input: &[A],
-) -> [A; OUT_LEN]
+    input: &[R],
+) -> [R; OUT_LEN]
 where
-    A: Algebra<F> + Copy,
-    P: Permutation<[A; WIDTH]>,
+    R: PrimeCharacteristicRing + Copy,
+    P: CryptographicPermutation<[R; WIDTH]>,
 {
     assert!(
         input.len() >= OUT_LEN,
@@ -110,7 +110,7 @@ where
     );
 
     // Copy the input into a fixed-width buffer, zero-padding unused elements if any.
-    let mut padded_input = [A::ZERO; WIDTH];
+    let mut padded_input = [R::ZERO; WIDTH];
     padded_input[..input.len()].copy_from_slice(input);
 
     // Start with the input as the initial state.
@@ -149,7 +149,7 @@ fn poseidon_safe_domain_separator<A, P, const WIDTH: usize, const OUT_LEN: usize
 ) -> [A; OUT_LEN]
 where
     A: Algebra<F> + Copy,
-    P: Permutation<[A; WIDTH]>,
+    P: CryptographicPermutation<[A; WIDTH]>,
 {
     // Combine params into a single number in base 2^32
     //
@@ -204,7 +204,7 @@ fn poseidon_sponge<A, P, const WIDTH: usize, const OUT_LEN: usize>(
 ) -> [A; OUT_LEN]
 where
     A: Algebra<F> + Copy,
-    P: Permutation<[A; WIDTH]>,
+    P: CryptographicPermutation<[A; WIDTH]>,
 {
     // The capacity length must be strictly smaller than the width to have a non-zero rate.
     // This check prevents a panic from subtraction underflow when calculating the rate.
