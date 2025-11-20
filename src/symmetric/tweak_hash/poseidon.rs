@@ -9,8 +9,8 @@ use crate::TWEAK_SEPARATOR_FOR_CHAIN_HASH;
 use crate::TWEAK_SEPARATOR_FOR_TREE_HASH;
 use crate::poseidon2_16;
 use crate::poseidon2_24;
+use crate::simd_utils::{pack_array, unpack_array};
 use crate::symmetric::prf::Pseudorandom;
-use crate::symmetric::simd_utils::{pack_array, unpack_array};
 use crate::symmetric::tweak_hash::chain;
 use crate::{F, PackedF};
 
