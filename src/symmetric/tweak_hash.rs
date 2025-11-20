@@ -1,6 +1,8 @@
 use rand::Rng;
 use serde::{Serialize, de::DeserializeOwned};
 
+use crate::symmetric::prf::Pseudorandom;
+
 /// Trait to model a tweakable hash function.
 /// Such a function takes a public parameter, a tweak, and a
 /// message to be hashed. The tweak should be understood as an
@@ -14,8 +16,13 @@ use serde::{Serialize, de::DeserializeOwned};
 /// to obtain distinct tweaks for applications in chains and
 /// applications in Merkle trees.
 pub trait TweakableHash {
+    /// Public parameter type for the hash function
     type Parameter: Copy + Sized + Send + Sync + Serialize + DeserializeOwned;
+
+    /// Tweak type for domain separation
     type Tweak;
+
+    /// Domain element type (defines output and input types to the hash)
     type Domain: Copy + PartialEq + Sized + Send + Sync + Serialize + DeserializeOwned;
 
     /// Generates a random public parameter.
@@ -39,8 +46,24 @@ pub trait TweakableHash {
         message: &[Self::Domain],
     ) -> Self::Domain;
 
-    /// Function to check internal consistency of any given parameters
-    /// For testing only, and expected to panic if something is wrong.
+    /// Computes bottom tree leaves by walking hash chains for multiple epochs.
+    ///
+    /// This method has a default scalar implementation that processes epochs in parallel.
+    fn compute_tree_leaves<PRF>(
+        prf_key: &PRF::Key,
+        parameter: &Self::Parameter,
+        epochs: &[u32],
+        num_chains: usize,
+        chain_length: usize,
+    ) -> Vec<Self::Domain>
+    where
+        PRF: Pseudorandom,
+        PRF::Domain: Into<Self::Domain>,
+        Self: Sized;
+
+    /// Function to check internal consistency of any given parameters.
+    ///
+    /// This is for testing only and is expected to panic if something is wrong.
     #[cfg(test)]
     fn internal_consistency_check();
 }
@@ -77,7 +100,6 @@ pub mod poseidon;
 
 #[cfg(test)]
 mod tests {
-
     use crate::symmetric::tweak_hash::poseidon::PoseidonTweak44;
 
     use super::*;

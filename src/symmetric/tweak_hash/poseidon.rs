@@ -1,13 +1,18 @@
-use p3_field::PrimeCharacteristicRing;
-use p3_field::PrimeField64;
-use p3_symmetric::Permutation;
+use core::array;
+
+use p3_field::{Algebra, PackedValue, PrimeCharacteristicRing, PrimeField64};
+use p3_symmetric::CryptographicPermutation;
+use rayon::prelude::*;
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::F;
 use crate::TWEAK_SEPARATOR_FOR_CHAIN_HASH;
 use crate::TWEAK_SEPARATOR_FOR_TREE_HASH;
 use crate::poseidon2_16;
 use crate::poseidon2_24;
+use crate::simd_utils::{pack_array, unpack_array};
+use crate::symmetric::prf::Pseudorandom;
+use crate::symmetric::tweak_hash::chain;
+use crate::{F, PackedF};
 
 use super::TweakableHash;
 
@@ -63,17 +68,20 @@ impl PoseidonTweak {
     }
 }
 
-/// Poseidon Compression Function.
+/// Poseidon Compression Function
 ///
 /// Computes:
 ///     PoseidonCompress(x) = Truncate(PoseidonPermute(x) + x)
 ///
-/// This function takes an input slice `x`, applies the Poseidon permutation,
-/// adds the original input back (as a feed-forward), and returns the first `OUT_LEN` elements.
+/// This function works generically over `R: PrimeCharacteristicRing`, allowing it to process both:
+/// - Scalar fields,
+/// - Packed SIMD fields
+///
+/// This follows the Plonky3 pattern that enables automatic SIMD optimization.
 ///
 /// - `WIDTH`: total state width (input length to permutation).
 /// - `OUT_LEN`: number of output elements to return.
-/// - `perm`: a Poseidon permutation over `[F; WIDTH]`.
+/// - `perm`: a cryptographically secure Poseidon permutation over `[R; WIDTH]`.
 /// - `input`: slice of input values, must be `≤ WIDTH` and `≥ OUT_LEN`.
 ///
 /// ### Warning: Input Padding
@@ -88,12 +96,13 @@ impl PoseidonTweak {
 /// Panics:
 /// - If `input.len() < OUT_LEN`
 /// - If `OUT_LEN > WIDTH`
-pub fn poseidon_compress<P, const WIDTH: usize, const OUT_LEN: usize>(
+pub fn poseidon_compress<R, P, const WIDTH: usize, const OUT_LEN: usize>(
     perm: &P,
-    input: &[F],
-) -> [F; OUT_LEN]
+    input: &[R],
+) -> [R; OUT_LEN]
 where
-    P: Permutation<[F; WIDTH]>,
+    R: PrimeCharacteristicRing + Copy,
+    P: CryptographicPermutation<[R; WIDTH]>,
 {
     assert!(
         input.len() >= OUT_LEN,
@@ -101,7 +110,7 @@ where
     );
 
     // Copy the input into a fixed-width buffer, zero-padding unused elements if any.
-    let mut padded_input = [F::ZERO; WIDTH];
+    let mut padded_input = [R::ZERO; WIDTH];
     padded_input[..input.len()].copy_from_slice(input);
 
     // Start with the input as the initial state.
@@ -124,18 +133,23 @@ where
 /// Computes a Poseidon-based domain separator by compressing an array of `u32`
 /// values using a fixed Poseidon instance.
 ///
+/// This function works generically over `A: Algebra<F>`, allowing it to process both:
+/// - Scalar fields,
+/// - Packed SIMD fields
+///
 /// ### Usage constraints
 /// - This function is private because it's tailored to a very specific case:
 ///   the Poseidon2 instance with arity 24 and a fixed 4-word input.
 /// - As this function operates on constants, its output can be **precomputed**
 ///   for significant performance gains, especially within a circuit.
 /// - If generalization is ever needed, a more generic and slower version should be used.
-fn poseidon_safe_domain_separator<P, const WIDTH: usize, const OUT_LEN: usize>(
+fn poseidon_safe_domain_separator<A, P, const WIDTH: usize, const OUT_LEN: usize>(
     perm: &P,
     params: &[u32; DOMAIN_PARAMETERS_LENGTH],
-) -> [F; OUT_LEN]
+) -> [A; OUT_LEN]
 where
-    P: Permutation<[F; WIDTH]>,
+    A: Algebra<F> + Copy,
+    P: CryptographicPermutation<[A; WIDTH]>,
 {
     // Combine params into a single number in base 2^32
     //
@@ -153,37 +167,44 @@ where
     let input = std::array::from_fn::<_, 24, _>(|_| {
         let digit = (acc % F::ORDER_U64 as u128) as u64;
         acc /= F::ORDER_U64 as u128;
-        F::from_u64(digit)
+        A::from_u64(digit)
     });
 
-    poseidon_compress::<_, WIDTH, OUT_LEN>(perm, &input)
+    poseidon_compress::<A, _, WIDTH, OUT_LEN>(perm, &input)
 }
 
-/// Poseidon Sponge Hash Function.
+/// Poseidon Sponge Hash Function
 ///
 /// Absorbs an arbitrary-length input using the Poseidon sponge construction
 /// and outputs `OUT_LEN` field elements. Domain separation is achieved by
 /// injecting a `capacity_value` into the state.
 ///
+/// This function works generically over `A: Algebra<F>`, allowing it to process both:
+/// - Scalar fields,
+/// - Packed SIMD fields
+///
+/// ### Parameters
 /// - `WIDTH`: sponge state width.
 /// - `OUT_LEN`: number of output elements.
-/// - `perm`: Poseidon permutation over `[F; WIDTH]`.
-/// - `capacity_value`: values to occupy the capacity part of the state (must be ≤ `WIDTH`).
+/// - `perm`: Poseidon permutation over `[A; WIDTH]`.
+/// - `capacity_value`: values to occupy the capacity part of the state (must be < `WIDTH`).
 /// - `input`: message to hash (any length).
 ///
+/// ### Sponge Construction
 /// This follows the classic sponge structure:
-/// - Absorption: inputs are added chunk-by-chunk into the first `rate` elements of the state.
-/// - Squeezing: outputs are read from the first `rate` elements of the state, permuted as needed.
+/// - **Absorption**: inputs are added chunk-by-chunk into the first `rate` elements of the state.
+/// - **Squeezing**: outputs are read from the first `rate` elements of the state, permuted as needed.
 ///
-/// Panics:
+/// ### Panics
 /// - If `capacity_value.len() >= WIDTH`
-fn poseidon_sponge<P, const WIDTH: usize, const OUT_LEN: usize>(
+fn poseidon_sponge<A, P, const WIDTH: usize, const OUT_LEN: usize>(
     perm: &P,
-    capacity_value: &[F],
-    input: &[F],
-) -> [F; OUT_LEN]
+    capacity_value: &[A],
+    input: &[A],
+) -> [A; OUT_LEN]
 where
-    P: Permutation<[F; WIDTH]>,
+    A: Algebra<F> + Copy,
+    P: CryptographicPermutation<[A; WIDTH]>,
 {
     // The capacity length must be strictly smaller than the width to have a non-zero rate.
     // This check prevents a panic from subtraction underflow when calculating the rate.
@@ -199,10 +220,10 @@ where
     //
     // This is safe because the input's original length is effectively encoded
     // in the `capacity_value`, which serves as a domain separator.
-    input_vector.resize(input.len() + extra_elements, F::ZERO);
+    input_vector.resize(input.len() + extra_elements, A::ZERO);
 
     // initialize
-    let mut state = [F::ZERO; WIDTH];
+    let mut state = [A::ZERO; WIDTH];
     state[rate..].copy_from_slice(capacity_value);
 
     // absorb
@@ -297,7 +318,7 @@ where
                     .chain(single.iter())
                     .copied()
                     .collect();
-                poseidon_compress::<_, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(&perm, &combined_input)
+                poseidon_compress::<F, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(&perm, &combined_input)
             }
 
             [left, right] => {
@@ -310,7 +331,7 @@ where
                     .chain(right.iter())
                     .copied()
                     .collect();
-                poseidon_compress::<_, MERGE_COMPRESSION_WIDTH, HASH_LEN>(&perm, &combined_input)
+                poseidon_compress::<F, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(&perm, &combined_input)
             }
 
             _ if message.len() > 2 => {
@@ -330,10 +351,10 @@ where
                     HASH_LEN as u32,
                 ];
                 let capacity_value =
-                    poseidon_safe_domain_separator::<_, MERGE_COMPRESSION_WIDTH, CAPACITY>(
+                    poseidon_safe_domain_separator::<F, _, MERGE_COMPRESSION_WIDTH, CAPACITY>(
                         &perm, &lengths,
                     );
-                poseidon_sponge::<_, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
+                poseidon_sponge::<F, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
                     &perm,
                     &capacity_value,
                     &combined_input,
@@ -341,6 +362,223 @@ where
             }
             _ => [F::ONE; HASH_LEN], // Unreachable case, added for safety
         }
+    }
+
+    fn compute_tree_leaves<PRF>(
+        prf_key: &PRF::Key,
+        parameter: &Self::Parameter,
+        epochs: &[u32],
+        num_chains: usize,
+        chain_length: usize,
+    ) -> Vec<Self::Domain>
+    where
+        PRF: Pseudorandom,
+        PRF::Domain: Into<Self::Domain>,
+    {
+        // Verify that num_chains matches the encoding dimension.
+        assert_eq!(
+            num_chains, NUM_CHUNKS,
+            "Poseidon SIMD implementation requires num_chains == NUM_CHUNKS. Got num_chains={}, NUM_CHUNKS={}",
+            num_chains, NUM_CHUNKS
+        );
+
+        // SIMD-ACCELERATED IMPLEMENTATION
+        //
+        // This path leverages architecture-specific SIMD instructions.
+        // `PackedF` represents multiple field elements processed in parallel.
+        //
+        // The key point: process multiple epochs simultaneously using SIMD.
+        // Each SIMD lane corresponds to one epoch.
+
+        // Determine SIMD width based on architecture.
+        let width = PackedF::WIDTH;
+
+        // Allocate output buffer for all leaves.
+        let mut leaves = vec![[F::ZERO; HASH_LEN]; epochs.len()];
+
+        // PREPARE PACKED CONSTANTS
+
+        // Broadcast the hash parameter to all SIMD lanes.
+        // Each lane will use the same parameter for its epoch.
+        let packed_parameter: [PackedF; PARAMETER_LEN] =
+            array::from_fn(|i| PackedF::from(parameter[i]));
+
+        // Create Poseidon permutation instances.
+        // - Width-16 for chain compression,
+        // - Width-24 for sponge hashing.
+        let chain_perm = poseidon2_16();
+        let sponge_perm = poseidon2_24();
+
+        // Compute domain separator for the sponge construction.
+        // This ensures different use cases produce different outputs.
+        let lengths = [
+            PARAMETER_LEN as u32,
+            TWEAK_LEN as u32,
+            NUM_CHUNKS as u32,
+            HASH_LEN as u32,
+        ];
+        let capacity_val =
+            poseidon_safe_domain_separator::<PackedF, _, MERGE_COMPRESSION_WIDTH, CAPACITY>(
+                &sponge_perm,
+                &lengths,
+            );
+
+        // PARALLEL SIMD PROCESSING
+        //
+        // Process epochs in batches of size `width`.
+        // Each batch is handled by one thread.
+        // Within each batch, SIMD processes `width` epochs simultaneously.
+        epochs
+            .par_chunks_exact(width)
+            .zip(leaves.par_chunks_exact_mut(width))
+            .for_each(|(epoch_chunk, leaves_chunk)| {
+                // STEP 1: GENERATE AND PACK CHAIN STARTING POINTS
+                //
+                // For each chain, generate starting points for all epochs in the chunk.
+                // Use vertical packing: transpose from [lane][element] to [element][lane].
+                //
+                // This layout enables efficient SIMD operations across epochs.
+
+                let mut packed_chains: [[PackedF; HASH_LEN]; NUM_CHUNKS] =
+                    array::from_fn(|c_idx| {
+                        // Generate starting points for this chain across all epochs.
+                        let starts: [[F; HASH_LEN]; PackedF::WIDTH] = array::from_fn(|lane| {
+                            PRF::get_domain_element(prf_key, epoch_chunk[lane], c_idx as u64).into()
+                        });
+
+                        // Transpose to vertical packing for SIMD efficiency.
+                        pack_array(&starts)
+                    });
+
+                // STEP 2: WALK CHAINS IN PARALLEL USING SIMD
+                //
+                // For each chain, walk all epochs simultaneously using SIMD.
+                // The chains start at their initial values and are walked step-by-step
+                // until they reach their endpoints.
+                //
+                // Cache strategy: process one chain at a time to maximize locality.
+                // All epochs for that chain stay in registers across iterations.
+
+                for (chain_index, packed_chain) in
+                    packed_chains.iter_mut().enumerate().take(num_chains)
+                {
+                    // Walk this chain for `chain_length - 1` steps.
+                    // The starting point is step 0, so we need `chain_length - 1` iterations.
+                    for step in 0..chain_length - 1 {
+                        // Current position in the chain.
+                        let pos = (step + 1) as u8;
+
+                        // Generate tweaks for all epochs in this SIMD batch.
+                        // Each lane gets a tweak specific to its epoch.
+                        let packed_tweak = array::from_fn::<_, TWEAK_LEN, _>(|t_idx| {
+                            PackedF::from_fn(|lane| {
+                                Self::chain_tweak(epoch_chunk[lane], chain_index as u8, pos)
+                                    .to_field_elements::<TWEAK_LEN>()[t_idx]
+                            })
+                        });
+
+                        // Assemble the packed input for the hash function.
+                        // Layout: [parameter | tweak | current_value]
+                        let mut packed_input = [PackedF::ZERO; CHAIN_COMPRESSION_WIDTH];
+                        let mut current_pos = 0;
+
+                        // Copy parameter into the input buffer.
+                        packed_input[current_pos..current_pos + PARAMETER_LEN]
+                            .copy_from_slice(&packed_parameter);
+                        current_pos += PARAMETER_LEN;
+
+                        // Copy tweak into the input buffer.
+                        packed_input[current_pos..current_pos + TWEAK_LEN]
+                            .copy_from_slice(&packed_tweak);
+                        current_pos += TWEAK_LEN;
+
+                        // Copy current chain value into the input buffer.
+                        packed_input[current_pos..current_pos + HASH_LEN]
+                            .copy_from_slice(packed_chain);
+
+                        // Apply the hash function to advance the chain.
+                        // This single call processes all epochs in parallel.
+                        *packed_chain =
+                            poseidon_compress::<PackedF, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
+                                &chain_perm,
+                                &packed_input,
+                            );
+                    }
+                }
+
+                // STEP 3: HASH CHAIN ENDS TO PRODUCE TREE LEAVES
+                //
+                // All chains have been walked to their endpoints.
+                // Now hash all chain ends together to form the tree leaf.
+                //
+                // This uses the sponge construction for variable-length input.
+
+                // Generate tree tweaks for all epochs.
+                // Level 0 indicates this is a bottom-layer leaf in the tree.
+                let packed_tree_tweak = array::from_fn::<_, TWEAK_LEN, _>(|t_idx| {
+                    PackedF::from_fn(|lane| {
+                        Self::tree_tweak(0, epoch_chunk[lane]).to_field_elements::<TWEAK_LEN>()
+                            [t_idx]
+                    })
+                });
+
+                // Assemble the sponge input.
+                // Layout: [parameter | tree_tweak | all_chain_ends]
+                let packed_leaf_input: Vec<_> = packed_parameter
+                    .iter()
+                    .chain(packed_tree_tweak.iter())
+                    .chain(packed_chains.iter().flatten())
+                    .copied()
+                    .collect();
+
+                // Apply the sponge hash to produce the leaf.
+                // This absorbs all chain ends and squeezes out the final hash.
+                let packed_leaves = poseidon_sponge::<PackedF, _, _, _>(
+                    &sponge_perm,
+                    &capacity_val,
+                    &packed_leaf_input,
+                );
+
+                // STEP 4: UNPACK RESULTS TO SCALAR REPRESENTATION
+                //
+                // Convert from vertical packing back to scalar layout.
+                // Each lane becomes one leaf in the output slice.
+
+                unpack_array(&packed_leaves, leaves_chunk);
+            });
+
+        // HANDLE REMAINDER EPOCHS
+        //
+        // If the total number of epochs is not divisible by the SIMD width,
+        // process the remaining epochs using scalar code.
+        //
+        // This ensures correctness for all input sizes.
+
+        let remainder_start = (epochs.len() / width) * width;
+        for (i, epoch) in epochs[remainder_start..].iter().enumerate() {
+            let global_index = remainder_start + i;
+
+            // Walk all chains for this epoch.
+            let chain_ends: Vec<_> = (0..NUM_CHUNKS)
+                .map(|chain_index| {
+                    let start = PRF::get_domain_element(prf_key, *epoch, chain_index as u64).into();
+                    chain::<Self>(
+                        parameter,
+                        *epoch,
+                        chain_index as u8,
+                        0,
+                        chain_length - 1,
+                        &start,
+                    )
+                })
+                .collect();
+
+            // Hash the chain ends to produce the leaf.
+            leaves[global_index] =
+                Self::apply(parameter, &Self::tree_tweak(0, *epoch), &chain_ends);
+        }
+
+        leaves
     }
 
     #[cfg(test)]
@@ -393,6 +631,8 @@ mod tests {
 
     use num_bigint::BigUint;
     use rand::Rng;
+
+    use crate::symmetric::prf::shake_to_field::ShakePRFtoF;
 
     use super::*;
 
@@ -781,6 +1021,170 @@ mod tests {
                     "Collision detected for {prev_input:?} and {input:?} with output {tweak_encoding:?}"
                 );
             }
+        }
+    }
+
+    /// Naive/scalar implementation of compute_tree_leaves for testing purposes.
+    fn compute_tree_leaves_naive<
+        TH: TweakableHash,
+        PRF: Pseudorandom,
+        const PARAMETER_LEN: usize,
+        const HASH_LEN: usize,
+        const TWEAK_LEN: usize,
+        const CAPACITY: usize,
+        const NUM_CHUNKS: usize,
+    >(
+        prf_key: &PRF::Key,
+        parameter: &TH::Parameter,
+        epochs: &[u32],
+        num_chains: usize,
+        chain_length: usize,
+    ) -> Vec<TH::Domain>
+    where
+        PRF::Domain: Into<TH::Domain>,
+    {
+        // Process each epoch in parallel
+        epochs
+            .iter()
+            .map(|&epoch| {
+                // For each epoch, walk all chains in parallel
+                let chain_ends = (0..num_chains)
+                    .map(|chain_index| {
+                        // Each chain start is just a PRF evaluation
+                        let start =
+                            PRF::get_domain_element(prf_key, epoch, chain_index as u64).into();
+                        // Walk the chain to get the public chain end
+                        chain::<TH>(
+                            parameter,
+                            epoch,
+                            chain_index as u8,
+                            0,
+                            chain_length - 1,
+                            &start,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                // Build hash of chain ends / public keys
+                TH::apply(parameter, &TH::tree_tweak(0, epoch), &chain_ends)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_compute_tree_leaves_matches_naive() {
+        type TestPRF = ShakePRFtoF<4, 4>;
+        type TestTH = PoseidonTweak44;
+
+        let mut rng = rand::rng();
+
+        // Generate test parameters
+        let prf_key = TestPRF::key_gen(&mut rng);
+        let parameter = TestTH::rand_parameter(&mut rng);
+
+        // Test with different numbers of epochs to cover both SIMD and remainder paths
+        let test_cases = vec![
+            // Small cases that fit in one SIMD batch
+            vec![0, 1, 2, 3],
+            // Exact multiple of SIMD width (assuming width is typically 4, 8, or 16)
+            vec![0, 1, 2, 3, 4, 5, 6, 7],
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+            // Non-multiple of SIMD width to test remainder handling
+            vec![0, 1, 2, 3, 4, 5],
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+        ];
+
+        let num_chains = 128;
+        let chain_length = 10;
+
+        for epochs in test_cases {
+            // Compute using SIMD implementation
+            let simd_result = TestTH::compute_tree_leaves::<TestPRF>(
+                &prf_key,
+                &parameter,
+                &epochs,
+                num_chains,
+                chain_length,
+            );
+
+            // Compute using naive/scalar implementation
+            let naive_result = compute_tree_leaves_naive::<TestTH, TestPRF, 4, 4, 3, 9, 128>(
+                &prf_key,
+                &parameter,
+                &epochs,
+                num_chains,
+                chain_length,
+            );
+
+            // Results should match exactly
+            assert_eq!(
+                simd_result.len(),
+                naive_result.len(),
+                "SIMD and naive implementations produced different number of leaves for epochs {:?}",
+                epochs
+            );
+
+            for (i, (simd_leaf, naive_leaf)) in
+                simd_result.iter().zip(naive_result.iter()).enumerate()
+            {
+                assert_eq!(
+                    simd_leaf, naive_leaf,
+                    "Mismatch at epoch index {} (epoch {}): SIMD and naive implementations produced different results",
+                    i, epochs[i]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_compute_tree_leaves_matches_naive_random_epochs() {
+        type TestPRF = ShakePRFtoF<4, 4>;
+        type TestTH = PoseidonTweak44;
+
+        let mut rng = rand::rng();
+
+        // Generate test parameters
+        let prf_key = TestPRF::key_gen(&mut rng);
+        let parameter = TestTH::rand_parameter(&mut rng);
+
+        let num_chains = 128;
+        let chain_length = 10;
+
+        // Test with random epochs (not necessarily sequential)
+        let random_epochs: Vec<u32> = (0..17).map(|_| rng.random::<u32>() % 1000).collect();
+
+        // Compute using SIMD implementation
+        let simd_result = TestTH::compute_tree_leaves::<TestPRF>(
+            &prf_key,
+            &parameter,
+            &random_epochs,
+            num_chains,
+            chain_length,
+        );
+
+        // Compute using naive/scalar implementation
+        let naive_result = compute_tree_leaves_naive::<TestTH, TestPRF, 4, 4, 3, 9, 128>(
+            &prf_key,
+            &parameter,
+            &random_epochs,
+            num_chains,
+            chain_length,
+        );
+
+        // Results should match exactly
+        assert_eq!(
+            simd_result.len(),
+            naive_result.len(),
+            "SIMD and naive implementations produced different number of leaves"
+        );
+
+        for (i, (simd_leaf, naive_leaf)) in simd_result.iter().zip(naive_result.iter()).enumerate()
+        {
+            assert_eq!(
+                simd_leaf, naive_leaf,
+                "Mismatch at epoch index {} (epoch {}): SIMD and naive implementations produced different results",
+                i, random_epochs[i]
+            );
         }
     }
 }
