@@ -1049,7 +1049,6 @@ mod tests {
             .map(|&epoch| {
                 // For each epoch, walk all chains in parallel
                 let chain_ends = (0..num_chains)
-                    .into_iter()
                     .map(|chain_index| {
                         // Each chain start is just a PRF evaluation
                         let start =
