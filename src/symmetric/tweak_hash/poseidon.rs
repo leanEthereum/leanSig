@@ -632,6 +632,8 @@ mod tests {
     use num_bigint::BigUint;
     use rand::Rng;
 
+    use crate::symmetric::prf::shake_to_field::ShakePRFtoF;
+
     use super::*;
 
     #[test]
@@ -1019,6 +1021,171 @@ mod tests {
                     "Collision detected for {prev_input:?} and {input:?} with output {tweak_encoding:?}"
                 );
             }
+        }
+    }
+
+    /// Naive/scalar implementation of compute_tree_leaves for testing purposes.
+    fn compute_tree_leaves_naive<
+        TH: TweakableHash,
+        PRF: Pseudorandom,
+        const PARAMETER_LEN: usize,
+        const HASH_LEN: usize,
+        const TWEAK_LEN: usize,
+        const CAPACITY: usize,
+        const NUM_CHUNKS: usize,
+    >(
+        prf_key: &PRF::Key,
+        parameter: &TH::Parameter,
+        epochs: &[u32],
+        num_chains: usize,
+        chain_length: usize,
+    ) -> Vec<TH::Domain>
+    where
+        PRF::Domain: Into<TH::Domain>,
+    {
+        // Process each epoch in parallel
+        epochs
+            .iter()
+            .map(|&epoch| {
+                // For each epoch, walk all chains in parallel
+                let chain_ends = (0..num_chains)
+                    .into_iter()
+                    .map(|chain_index| {
+                        // Each chain start is just a PRF evaluation
+                        let start =
+                            PRF::get_domain_element(prf_key, epoch, chain_index as u64).into();
+                        // Walk the chain to get the public chain end
+                        chain::<TH>(
+                            parameter,
+                            epoch,
+                            chain_index as u8,
+                            0,
+                            chain_length - 1,
+                            &start,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                // Build hash of chain ends / public keys
+                TH::apply(parameter, &TH::tree_tweak(0, epoch), &chain_ends)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_compute_tree_leaves_matches_naive() {
+        type TestPRF = ShakePRFtoF<4, 4>;
+        type TestTH = PoseidonTweak44;
+
+        let mut rng = rand::rng();
+
+        // Generate test parameters
+        let prf_key = TestPRF::key_gen(&mut rng);
+        let parameter = TestTH::rand_parameter(&mut rng);
+
+        // Test with different numbers of epochs to cover both SIMD and remainder paths
+        let test_cases = vec![
+            // Small cases that fit in one SIMD batch
+            vec![0, 1, 2, 3],
+            // Exact multiple of SIMD width (assuming width is typically 4, 8, or 16)
+            vec![0, 1, 2, 3, 4, 5, 6, 7],
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+            // Non-multiple of SIMD width to test remainder handling
+            vec![0, 1, 2, 3, 4, 5],
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+        ];
+
+        let num_chains = 128;
+        let chain_length = 10;
+
+        for epochs in test_cases {
+            // Compute using SIMD implementation
+            let simd_result = TestTH::compute_tree_leaves::<TestPRF>(
+                &prf_key,
+                &parameter,
+                &epochs,
+                num_chains,
+                chain_length,
+            );
+
+            // Compute using naive/scalar implementation
+            let naive_result = compute_tree_leaves_naive::<TestTH, TestPRF, 4, 4, 3, 9, 128>(
+                &prf_key,
+                &parameter,
+                &epochs,
+                num_chains,
+                chain_length,
+            );
+
+            // Results should match exactly
+            assert_eq!(
+                simd_result.len(),
+                naive_result.len(),
+                "SIMD and naive implementations produced different number of leaves for epochs {:?}",
+                epochs
+            );
+
+            for (i, (simd_leaf, naive_leaf)) in
+                simd_result.iter().zip(naive_result.iter()).enumerate()
+            {
+                assert_eq!(
+                    simd_leaf, naive_leaf,
+                    "Mismatch at epoch index {} (epoch {}): SIMD and naive implementations produced different results",
+                    i, epochs[i]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_compute_tree_leaves_matches_naive_random_epochs() {
+        type TestPRF = ShakePRFtoF<4, 4>;
+        type TestTH = PoseidonTweak44;
+
+        let mut rng = rand::rng();
+
+        // Generate test parameters
+        let prf_key = TestPRF::key_gen(&mut rng);
+        let parameter = TestTH::rand_parameter(&mut rng);
+
+        let num_chains = 128;
+        let chain_length = 10;
+
+        // Test with random epochs (not necessarily sequential)
+        let random_epochs: Vec<u32> = (0..17).map(|_| rng.random::<u32>() % 1000).collect();
+
+        // Compute using SIMD implementation
+        let simd_result = TestTH::compute_tree_leaves::<TestPRF>(
+            &prf_key,
+            &parameter,
+            &random_epochs,
+            num_chains,
+            chain_length,
+        );
+
+        // Compute using naive/scalar implementation
+        let naive_result = compute_tree_leaves_naive::<TestTH, TestPRF, 4, 4, 3, 9, 128>(
+            &prf_key,
+            &parameter,
+            &random_epochs,
+            num_chains,
+            chain_length,
+        );
+
+        // Results should match exactly
+        assert_eq!(
+            simd_result.len(),
+            naive_result.len(),
+            "SIMD and naive implementations produced different number of leaves"
+        );
+
+        for (i, (simd_leaf, naive_leaf)) in simd_result.iter().zip(naive_result.iter()).enumerate()
+        {
+            assert_eq!(
+                simd_leaf, naive_leaf,
+                "Mismatch at epoch index {} (epoch {}): SIMD and naive implementations produced different results",
+                i, random_epochs[i]
+            );
         }
     }
 }
