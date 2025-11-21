@@ -15,7 +15,7 @@ The examples below, tests, and benchmarks just use a default (potentially insecu
 
 ## Signature Interface
 
-If you want to use this library, the main interface is that of a *(synchronized) signature scheme*, which is defined in the [Signature trait](https://github.com/b-wagn/hash-sig/blob/main/src/signature.rs). Here is a summary:
+If you want to use this library, the main interface is that of a *(synchronized) signature scheme*, which is defined in the [Signature trait](https://github.com/leanEthereum/leanSig/blob/main/src/signature.rs). Here is a summary:
 - A function `key_gen` to generate keys.
 - A function `sign` to sign messages using the secret key with respect to an epoch.
 - A function `verify` to verify signatures for a given message, public key, and epoch.
@@ -52,11 +52,11 @@ let sig = S::sign(&sk, epoch, &message);
 let is_valid = S::verify(&pk, epoch, &message, &sig);
 ```
 
-See also function `test_signature_scheme_correctness` in [this file](https://github.com/b-wagn/hash-sig/blob/main/src/signature.rs).
+See also function `test_signature_scheme_correctness` in [this file](https://github.com/leanEthereum/leanSig/blob/main/src/signature.rs).
 
 ## Schemes
 The code implements a generic framework from [this paper](https://eprint.iacr.org/2025/055.pdf), which builds XMSS-like hash-based signatures from a primitive called incomparable encodings.
-Hardcoded instantiations of this generic framework (using Poseidon2) are defined in `hashsig::signature::generalized_xmss`.
+Hardcoded instantiations of this generic framework (using Poseidon2) are defined in `leansig::signature::generalized_xmss`.
 The parameters have been chosen based on the analysis in the paper using Python scripts. Details are as follows:
 
 | Submodule        | Paper / Documentation                                     | Parameters Set With     |
@@ -93,7 +93,7 @@ Run them with
 cargo bench
 ```
 
-The schemes that are benchmarked are hardcoded instantiations of the generic framework, which are defined in `hashsig::signature::generalized_xmss`.
+The schemes that are benchmarked are hardcoded instantiations of the generic framework, which are defined in `leansig::signature::generalized_xmss`.
 The parameters of these instantiations have been chosen carefully with the aim to achieve a desired security level.
 By default, key generation is not benchmarked. There are two options to benchmark it:
 1. add the option `--features with-gen-benches-poseidon` or `--features with-gen-benches-poseidon-top-level` to `cargo bench`. Note that this will make benchmarks very slow, as key generation will be repeated within the benchmarks. Especially for Poseidon, this is not recommended.

@@ -3,7 +3,7 @@ use std::{cmp::min, hint::black_box};
 use criterion::{Criterion, SamplingMode};
 use rand::Rng;
 
-use hashsig::{
+use leansig::{
     MESSAGE_LENGTH,
     signature::{
         SignatureScheme, SignatureSchemeSecretKey,
