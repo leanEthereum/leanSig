@@ -549,12 +549,12 @@ where
         buf.reserve((HASH_LEN + PARAM_LEN) * F::NUM_BYTES);
 
         // Encode root
-        for elem in self.root.iter() {
+        for elem in &self.root {
             let value = elem.as_canonical_u32();
             buf.extend_from_slice(&value.to_le_bytes());
         }
         // Encode parameter
-        for elem in self.parameter.iter() {
+        for elem in &self.parameter {
             let value = elem.as_canonical_u32();
             buf.extend_from_slice(&value.to_le_bytes());
         }
