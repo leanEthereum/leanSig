@@ -8,6 +8,9 @@ use sha3::{
     digest::{ExtendableOutput, Update, XofReader},
 };
 
+/// Number of pseudorandom bytes to generate one pseudorandom field element
+const PRF_BYTES_PER_FE: usize = 16;
+
 const KEY_LENGTH: usize = 32; // 32 bytes
 const PRF_DOMAIN_SEP: [u8; 16] = [
     0xae, 0xae, 0x22, 0xff, 0x00, 0x01, 0xfa, 0xff, 0x21, 0xaf, 0x12, 0x00, 0x01, 0x11, 0xff, 0x00,
@@ -59,13 +62,13 @@ where
         // Mapping bytes to field elements
         std::array::from_fn(|_| {
             // Buffer to store the output
-            let mut buf = [0u8; 8];
+            let mut buf = [0u8; PRF_BYTES_PER_FE];
 
             // Read the extended output into the buffer
             xof_reader.read(&mut buf);
 
             // Mapping bytes to a field element
-            F::from_u64(u64::from_be_bytes(buf))
+            F::from_u128(u128::from_be_bytes(buf))
         })
     }
 
@@ -103,13 +106,13 @@ where
         // Mapping bytes to field elements
         std::array::from_fn(|_| {
             // Buffer to store the output
-            let mut buf = [0u8; 8];
+            let mut buf = [0u8; PRF_BYTES_PER_FE];
 
             // Read the extended output into the buffer
             xof_reader.read(&mut buf);
 
             // Mapping bytes to a field element
-            F::from_u64(u64::from_be_bytes(buf))
+            F::from_u128(u128::from_be_bytes(buf))
         })
     }
 
