@@ -91,7 +91,7 @@ impl<const N: usize> Serialize for FieldArray<N> {
     where
         S: serde::Serializer,
     {
-        serializer.collect_seq(self.0.iter().map(|elem| elem.as_canonical_u32()))
+        serializer.collect_seq(self.0.iter().map(PrimeField32::as_canonical_u32))
     }
 }
 
