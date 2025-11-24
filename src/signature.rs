@@ -3,6 +3,7 @@ use std::ops::Range;
 use crate::MESSAGE_LENGTH;
 use rand::Rng;
 use serde::{Serialize, de::DeserializeOwned};
+use ssz::{Decode, Encode};
 use thiserror::Error;
 
 /// Error enum for the signing process.
@@ -96,7 +97,9 @@ pub trait SignatureScheme {
     /// The public key used for verification.
     ///
     /// The key must be serializable to allow for network transmission and storage.
-    type PublicKey: Serialize + DeserializeOwned;
+    ///
+    /// We must support SSZ encoding for Ethereum consensus layer compatibility.
+    type PublicKey: Serialize + DeserializeOwned + Encode + Decode;
 
     /// The secret key used for signing.
     ///
