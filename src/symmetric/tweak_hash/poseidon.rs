@@ -3,10 +3,10 @@ use core::array;
 use p3_field::{Algebra, PackedValue, PrimeCharacteristicRing, PrimeField64};
 use p3_symmetric::CryptographicPermutation;
 use rayon::prelude::*;
-use serde::{Serialize, de::DeserializeOwned};
 
 use crate::TWEAK_SEPARATOR_FOR_CHAIN_HASH;
 use crate::TWEAK_SEPARATOR_FOR_TREE_HASH;
+use crate::array::FieldArray;
 use crate::poseidon2_16;
 use crate::poseidon2_24;
 use crate::simd_utils::{pack_array, unpack_array};
@@ -263,22 +263,19 @@ impl<
     const CAPACITY: usize,
     const NUM_CHUNKS: usize,
 > TweakableHash for PoseidonTweakHash<PARAMETER_LEN, HASH_LEN, TWEAK_LEN, CAPACITY, NUM_CHUNKS>
-where
-    [F; PARAMETER_LEN]: Serialize + DeserializeOwned,
-    [F; HASH_LEN]: Serialize + DeserializeOwned,
 {
-    type Parameter = [F; PARAMETER_LEN];
+    type Parameter = FieldArray<PARAMETER_LEN>;
 
     type Tweak = PoseidonTweak;
 
-    type Domain = [F; HASH_LEN];
+    type Domain = FieldArray<HASH_LEN>;
 
     fn rand_parameter<R: rand::Rng>(rng: &mut R) -> Self::Parameter {
-        rng.random()
+        FieldArray(rng.random())
     }
 
     fn rand_domain<R: rand::Rng>(rng: &mut R) -> Self::Domain {
-        rng.random()
+        FieldArray(rng.random())
     }
 
     fn tree_tweak(level: u8, pos_in_level: u32) -> Self::Tweak {
@@ -318,7 +315,12 @@ where
                     .chain(single.iter())
                     .copied()
                     .collect();
-                poseidon_compress::<F, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(&perm, &combined_input)
+                FieldArray(
+                    poseidon_compress::<F, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
+                        &perm,
+                        &combined_input,
+                    ),
+                )
             }
 
             [left, right] => {
@@ -331,7 +333,12 @@ where
                     .chain(right.iter())
                     .copied()
                     .collect();
-                poseidon_compress::<F, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(&perm, &combined_input)
+                FieldArray(
+                    poseidon_compress::<F, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
+                        &perm,
+                        &combined_input,
+                    ),
+                )
             }
 
             _ if message.len() > 2 => {
@@ -340,7 +347,7 @@ where
                 let combined_input: Vec<F> = parameter
                     .iter()
                     .chain(tweak_fe.iter())
-                    .chain(message.iter().flatten())
+                    .chain(message.iter().flat_map(|x| x.iter()))
                     .copied()
                     .collect();
 
@@ -354,13 +361,13 @@ where
                     poseidon_safe_domain_separator::<F, _, MERGE_COMPRESSION_WIDTH, CAPACITY>(
                         &perm, &lengths,
                     );
-                poseidon_sponge::<F, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
+                FieldArray(poseidon_sponge::<F, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
                     &perm,
                     &capacity_value,
                     &combined_input,
-                )
+                ))
             }
-            _ => [F::ONE; HASH_LEN], // Unreachable case, added for safety
+            _ => FieldArray([F::ONE; HASH_LEN]), // Unreachable case, added for safety
         }
     }
 
@@ -394,7 +401,7 @@ where
         let width = PackedF::WIDTH;
 
         // Allocate output buffer for all leaves.
-        let mut leaves = vec![[F::ZERO; HASH_LEN]; epochs.len()];
+        let mut leaves = vec![FieldArray([F::ZERO; HASH_LEN]); epochs.len()];
 
         // PREPARE PACKED CONSTANTS
 
@@ -442,7 +449,7 @@ where
                 let mut packed_chains: [[PackedF; HASH_LEN]; NUM_CHUNKS] =
                     array::from_fn(|c_idx| {
                         // Generate starting points for this chain across all epochs.
-                        let starts: [[F; HASH_LEN]; PackedF::WIDTH] = array::from_fn(|lane| {
+                        let starts: [_; PackedF::WIDTH] = array::from_fn(|lane| {
                             PRF::get_domain_element(prf_key, epoch_chunk[lane], c_idx as u64).into()
                         });
 
@@ -543,7 +550,8 @@ where
                 //
                 // Convert from vertical packing back to scalar layout.
                 // Each lane becomes one leaf in the output slice.
-
+                //
+                // No unsafe transmute needed - unpack_array accepts &mut [FieldArray<N>] directly.
                 unpack_array(&packed_leaves, leaves_chunk);
             });
 

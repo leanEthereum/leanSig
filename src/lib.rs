@@ -14,6 +14,7 @@ pub const TWEAK_SEPARATOR_FOR_CHAIN_HASH: u8 = 0x00;
 type F = KoalaBear;
 pub(crate) type PackedF = <F as Field>::Packing;
 
+pub(crate) mod array;
 pub(crate) mod hypercube;
 pub(crate) mod inc_encoding;
 pub mod signature;

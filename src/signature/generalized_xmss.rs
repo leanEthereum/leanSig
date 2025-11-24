@@ -5,7 +5,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    F, MESSAGE_LENGTH,
+    MESSAGE_LENGTH,
     inc_encoding::IncomparableEncoding,
     signature::SignatureSchemeSecretKey,
     symmetric::{
@@ -17,7 +17,6 @@ use crate::{
 
 use super::{SignatureScheme, SigningError};
 
-use p3_field::{PrimeField32, RawDataSerializable};
 use ssz::{Decode, DecodeError, Encode};
 
 /// Implementation of the generalized XMSS signature scheme
@@ -528,54 +527,36 @@ where
     }
 }
 
-impl<TH, const HASH_LEN: usize, const PARAM_LEN: usize> Encode for GeneralizedXMSSPublicKey<TH>
-where
-    TH: TweakableHash<Domain = [F; HASH_LEN], Parameter = [F; PARAM_LEN]>,
-{
+impl<TH: TweakableHash> Encode for GeneralizedXMSSPublicKey<TH> {
     fn is_ssz_fixed_len() -> bool {
-        true
+        <TH::Domain as Encode>::is_ssz_fixed_len() && <TH::Parameter as Encode>::is_ssz_fixed_len()
     }
 
     fn ssz_fixed_len() -> usize {
-        (HASH_LEN + PARAM_LEN) * F::NUM_BYTES
+        <TH::Domain as Encode>::ssz_fixed_len() + <TH::Parameter as Encode>::ssz_fixed_len()
     }
 
     fn ssz_bytes_len(&self) -> usize {
-        (HASH_LEN + PARAM_LEN) * F::NUM_BYTES
+        self.root.ssz_bytes_len() + self.parameter.ssz_bytes_len()
     }
 
     fn ssz_append(&self, buf: &mut Vec<u8>) {
-        // Reserve space for the output
-        buf.reserve((HASH_LEN + PARAM_LEN) * F::NUM_BYTES);
-
-        // Encode root
-        for elem in &self.root {
-            let value = elem.as_canonical_u32();
-            buf.extend_from_slice(&value.to_le_bytes());
-        }
-        // Encode parameter
-        for elem in &self.parameter {
-            let value = elem.as_canonical_u32();
-            buf.extend_from_slice(&value.to_le_bytes());
-        }
+        self.root.ssz_append(buf);
+        self.parameter.ssz_append(buf);
     }
 }
 
-impl<TH, const HASH_LEN: usize, const PARAM_LEN: usize> Decode for GeneralizedXMSSPublicKey<TH>
-where
-    TH: TweakableHash<Domain = [F; HASH_LEN], Parameter = [F; PARAM_LEN]>,
-{
+impl<TH: TweakableHash> Decode for GeneralizedXMSSPublicKey<TH> {
     fn is_ssz_fixed_len() -> bool {
-        true
+        <TH::Domain as Decode>::is_ssz_fixed_len() && <TH::Parameter as Decode>::is_ssz_fixed_len()
     }
 
     fn ssz_fixed_len() -> usize {
-        (HASH_LEN + PARAM_LEN) * F::NUM_BYTES
+        <TH::Domain as Decode>::ssz_fixed_len() + <TH::Parameter as Decode>::ssz_fixed_len()
     }
 
     fn from_ssz_bytes(bytes: &[u8]) -> Result<Self, DecodeError> {
-        let expected_len = (HASH_LEN + PARAM_LEN) * F::NUM_BYTES;
-
+        let expected_len = <Self as Decode>::ssz_fixed_len();
         if bytes.len() != expected_len {
             return Err(DecodeError::InvalidByteLength {
                 len: bytes.len(),
@@ -583,25 +564,11 @@ where
             });
         }
 
-        // We know this is safe because of the length check above.
-        let (root_bytes, param_bytes) = bytes.split_at(HASH_LEN * F::NUM_BYTES);
+        let root_len = <TH::Domain as Decode>::ssz_fixed_len();
+        let (root_bytes, param_bytes) = bytes.split_at(root_len);
 
-        // Define a helper closure to decode an array from bytes.
-        let decode_array = |chunk: &[u8]| -> F {
-            let val = u32::from_le_bytes(chunk.try_into().unwrap());
-            F::new(val)
-        };
-
-        // Construct the root and parameter arrays.
-        let root = std::array::from_fn(|i| {
-            let start = i * F::NUM_BYTES;
-            decode_array(&root_bytes[start..start + F::NUM_BYTES])
-        });
-
-        let parameter = std::array::from_fn(|i| {
-            let start = i * F::NUM_BYTES;
-            decode_array(&param_bytes[start..start + F::NUM_BYTES])
-        });
+        let root = TH::Domain::from_ssz_bytes(root_bytes)?;
+        let parameter = TH::Parameter::from_ssz_bytes(param_bytes)?;
 
         Ok(Self { root, parameter })
     }
@@ -616,6 +583,7 @@ pub mod instantiations_poseidon_top_level;
 #[cfg(test)]
 mod tests {
     use crate::{
+        array::FieldArray,
         inc_encoding::target_sum::TargetSumEncoding,
         signature::test_templates::test_signature_scheme_correctness,
         symmetric::{
@@ -627,7 +595,7 @@ mod tests {
 
     use super::*;
 
-    use crate::symmetric::tweak_hash::poseidon::PoseidonTweakHash;
+    use crate::{F, symmetric::tweak_hash::poseidon::PoseidonTweakHash};
     use p3_field::PrimeCharacteristicRing;
     use rand::rng;
     use ssz::{Decode, Encode};
@@ -810,8 +778,8 @@ mod tests {
 
     #[test]
     fn test_public_key_ssz_zero_values() {
-        let root = [F::ZERO; 7];
-        let parameter = [F::ZERO; 5];
+        let root = FieldArray([F::ZERO; 7]);
+        let parameter = FieldArray([F::ZERO; 5]);
 
         let public_key = GeneralizedXMSSPublicKey::<TestTH> { root, parameter };
 
@@ -828,8 +796,8 @@ mod tests {
         use p3_field::PrimeField32;
 
         let max_val = F::ORDER_U32 - 1;
-        let root = [F::new(max_val); 7];
-        let parameter = [F::new(max_val); 5];
+        let root = FieldArray([F::new(max_val); 7]);
+        let parameter = FieldArray([F::new(max_val); 5]);
 
         let public_key = GeneralizedXMSSPublicKey::<TestTH> { root, parameter };
 
@@ -881,7 +849,7 @@ mod tests {
     #[test]
     fn test_public_key_ssz_specific_values() {
         // Test with specific known values to verify byte ordering
-        let root = [
+        let root = FieldArray([
             F::new(1),
             F::new(2),
             F::new(3),
@@ -889,8 +857,8 @@ mod tests {
             F::new(5),
             F::new(6),
             F::new(7),
-        ];
-        let parameter = [F::new(10), F::new(20), F::new(30), F::new(40), F::new(50)];
+        ]);
+        let parameter = FieldArray([F::new(10), F::new(20), F::new(30), F::new(40), F::new(50)]);
 
         let public_key = GeneralizedXMSSPublicKey::<TestTH> { root, parameter };
 
