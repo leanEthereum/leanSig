@@ -550,8 +550,6 @@ impl<
                 //
                 // Convert from vertical packing back to scalar layout.
                 // Each lane becomes one leaf in the output slice.
-                //
-                // No unsafe transmute needed - unpack_array accepts &mut [FieldArray<N>] directly.
                 unpack_array(&packed_leaves, leaves_chunk);
             });
 
