@@ -359,4 +359,12 @@ mod tests {
         assert_ne!(arr1, arr3);
         assert_ne!(arr2, arr3);
     }
+
+    #[test]
+    fn test_bincode_no_size_prefix() {
+        let config = bincode::config::standard().with_fixed_int_encoding();
+        let arr = FieldArray([F::new(1), F::new(2), F::new(3)]);
+        let encoded = bincode::serde::encode_to_vec(arr, config).unwrap();
+        assert_eq!(encoded.len(), arr.len() * F::NUM_BYTES);
+    }
 }
