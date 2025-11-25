@@ -155,15 +155,12 @@ impl<IE: IncomparableEncoding, TH: TweakableHash> Decode for GeneralizedXMSSSign
         // Panic safety: Ensure offsets are monotonic and within bounds
         // This prevents panic when creating slices below
         if offset_path > offset_hashes || offset_hashes > bytes.len() {
-            return Err(DecodeError::BytesInvalid(
-                format!(
-                    "Invalid variable offsets: path={} hashes={} len={}",
-                    offset_path,
-                    offset_hashes,
-                    bytes.len()
-                )
-                .into(),
-            ));
+            return Err(DecodeError::BytesInvalid(format!(
+                "Invalid variable offsets: path={} hashes={} len={}",
+                offset_path,
+                offset_hashes,
+                bytes.len()
+            )));
         }
 
         // 4. Decode variable fields (now safe after bounds check)
@@ -309,6 +306,7 @@ impl<PRF: Pseudorandom, IE: IncomparableEncoding, TH: TweakableHash, const LOG_L
         false
     }
 
+    #[allow(clippy::too_many_lines)]
     fn from_ssz_bytes(bytes: &[u8]) -> Result<Self, DecodeError> {
         // Decodes a generalized XMSS secret key from SSZ bytes.
         //
@@ -435,16 +433,13 @@ impl<PRF: Pseudorandom, IE: IncomparableEncoding, TH: TweakableHash, const LOG_L
             || offset_left_bottom > offset_right_bottom
             || offset_right_bottom > bytes.len()
         {
-            return Err(DecodeError::BytesInvalid(
-                format!(
-                    "Invalid variable offsets: top={} left={} right={} len={}",
-                    offset_top_tree,
-                    offset_left_bottom,
-                    offset_right_bottom,
-                    bytes.len()
-                )
-                .into(),
-            ));
+            return Err(DecodeError::BytesInvalid(format!(
+                "Invalid variable offsets: top={} left={} right={} len={}",
+                offset_top_tree,
+                offset_left_bottom,
+                offset_right_bottom,
+                bytes.len()
+            )));
         }
 
         // 9. Decode variable fields (now safe after bounds check)
@@ -1271,6 +1266,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::items_after_statements)]
     fn test_ssz_panic_safety_malicious_offsets() {
         type PRF = ShakePRFtoF<7, 5>;
         type TH = PoseidonTweakW1L5;
