@@ -104,12 +104,16 @@ pub trait SignatureScheme {
     /// The secret key used for signing.
     ///
     /// The key must be serializable for persistence and secure backup.
-    type SecretKey: SignatureSchemeSecretKey + Serialize + DeserializeOwned;
+    ///
+    /// We must support SSZ encoding for Ethereum consensus layer compatibility.
+    type SecretKey: SignatureSchemeSecretKey + Serialize + DeserializeOwned + Encode + Decode;
 
     /// The signature object produced by the signing algorithm.
     ///
     /// The signature must be serializable to allow for network transmission and storage.
-    type Signature: Serialize + DeserializeOwned;
+    ///
+    /// We must support SSZ encoding for Ethereum consensus layer compatibility.
+    type Signature: Serialize + DeserializeOwned + Encode + Decode;
 
     /// The maximum number of epochs supported by this signature scheme configuration,
     /// denoted as $L$ in the literature [DKKW25a, DKKW25b].

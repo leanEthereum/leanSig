@@ -3,14 +3,83 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use ssz::{Decode, DecodeError, Encode};
 
 /// A single layer of a sparse Hash-Tree
 /// based on tweakable hash function
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 struct HashTreeLayer<TH: TweakableHash> {
-    start_index: usize,
+    start_index: u64,
     nodes: Vec<TH::Domain>,
+}
+
+impl<TH: TweakableHash> Encode for HashTreeLayer<TH> {
+    fn is_ssz_fixed_len() -> bool {
+        false
+    }
+
+    fn ssz_bytes_len(&self) -> usize {
+        // - Fixed part: start_index (8 bytes) + offset (4 bytes)
+        // - Variable part: nodes
+        8 + 4 + self.nodes.ssz_bytes_len()
+    }
+
+    fn ssz_append(&self, buf: &mut Vec<u8>) {
+        // SSZ Container encoding order:
+        // 1. Fixed field: start_index
+        self.start_index.ssz_append(buf);
+
+        // 2. Offset for variable field: nodes
+        // Offset points to where variable data starts = end of fixed part
+        // 8 bytes (start_index) + 4 bytes (offset itself)
+        let offset: u32 = 12;
+        buf.extend_from_slice(&offset.to_le_bytes());
+
+        // 3. Variable data: nodes
+        self.nodes.ssz_append(buf);
+    }
+}
+
+impl<TH: TweakableHash> Decode for HashTreeLayer<TH> {
+    fn is_ssz_fixed_len() -> bool {
+        false
+    }
+
+    fn from_ssz_bytes(bytes: &[u8]) -> Result<Self, DecodeError> {
+        // Minimum size: start_index (8) + offset (4) = 12 bytes
+        const FIXED_SIZE: usize = 12;
+        if bytes.len() < FIXED_SIZE {
+            return Err(DecodeError::InvalidByteLength {
+                len: bytes.len(),
+                expected: FIXED_SIZE,
+            });
+        }
+
+        // 1. Decode fixed field: start_index
+        let start_index = u64::from_ssz_bytes(&bytes[0..8])?;
+
+        // 2. Read offset for variable field
+        let offset = u32::from_le_bytes(bytes[8..12].try_into().map_err(|_| {
+            DecodeError::InvalidByteLength {
+                len: bytes.len(),
+                expected: 12,
+            }
+        })?) as usize;
+
+        // 3. Validate offset points to end of fixed part
+        if offset != FIXED_SIZE {
+            return Err(DecodeError::InvalidByteLength {
+                len: offset,
+                expected: FIXED_SIZE,
+            });
+        }
+
+        // 4. Decode variable field: nodes
+        let nodes = Vec::<TH::Domain>::from_ssz_bytes(&bytes[offset..])?;
+
+        Ok(Self { start_index, nodes })
+    }
 }
 
 impl<TH: TweakableHash> HashTreeLayer<TH> {
@@ -64,7 +133,7 @@ impl<TH: TweakableHash> HashTreeLayer<TH> {
 
         // Return the padded layer with the corrected start index.
         Self {
-            start_index: actual_start_index,
+            start_index: actual_start_index as u64,
             nodes: out,
         }
     }
@@ -88,11 +157,11 @@ pub struct HashSubTree<TH: TweakableHash> {
     /// Depth of the full tree. The tree can have at most
     /// 1 << depth many leafs. The full tree has depth + 1
     /// many layers, whereas the sub-tree can have less.
-    depth: usize,
+    depth: u64,
 
     /// The lowest layer of the sub-tree. If this represents the
     /// full tree, then lowest_layer = 0.
-    lowest_layer: usize,
+    lowest_layer: u64,
 
     /// Layers of the hash tree, starting with the
     /// lowest_level. That is, layers[i] contains the nodes
@@ -100,6 +169,82 @@ pub struct HashSubTree<TH: TweakableHash> {
     /// (lowest_layer = 0), the leafs are not included: the
     /// bottom layer is the list of hashes of all leafs
     layers: Vec<HashTreeLayer<TH>>,
+}
+
+impl<TH: TweakableHash> Encode for HashSubTree<TH> {
+    fn is_ssz_fixed_len() -> bool {
+        false
+    }
+
+    fn ssz_bytes_len(&self) -> usize {
+        // - Fixed part: depth (8) + lowest_layer (8) + offset (4)
+        // - Variable part: layers
+        8 + 8 + 4 + self.layers.ssz_bytes_len()
+    }
+
+    fn ssz_append(&self, buf: &mut Vec<u8>) {
+        // SSZ Container encoding order:
+        // 1. Fixed field: depth
+        self.depth.ssz_append(buf);
+
+        // 2. Fixed field: lowest_layer
+        self.lowest_layer.ssz_append(buf);
+
+        // 3. Offset for variable field: layers
+        let offset: u32 = 20; // 8 (depth) + 8 (lowest_layer) + 4 (offset itself)
+        buf.extend_from_slice(&offset.to_le_bytes());
+
+        // 4. Variable data: layers
+        self.layers.ssz_append(buf);
+    }
+}
+
+impl<TH: TweakableHash> Decode for HashSubTree<TH> {
+    fn is_ssz_fixed_len() -> bool {
+        false
+    }
+
+    fn from_ssz_bytes(bytes: &[u8]) -> Result<Self, DecodeError> {
+        // Minimum size: depth (8) + lowest_layer (8) + offset (4) = 20 bytes
+        const FIXED_SIZE: usize = 20;
+        if bytes.len() < FIXED_SIZE {
+            return Err(DecodeError::InvalidByteLength {
+                len: bytes.len(),
+                expected: FIXED_SIZE,
+            });
+        }
+
+        // 1. Decode fixed field: depth
+        let depth = u64::from_ssz_bytes(&bytes[0..8])?;
+
+        // 2. Decode fixed field: lowest_layer
+        let lowest_layer = u64::from_ssz_bytes(&bytes[8..16])?;
+
+        // 3. Read offset for variable field
+        let offset = u32::from_le_bytes(bytes[16..20].try_into().map_err(|_| {
+            DecodeError::InvalidByteLength {
+                len: bytes.len(),
+                expected: 20,
+            }
+        })?) as usize;
+
+        // 4. Validate offset points to end of fixed part
+        if offset != FIXED_SIZE {
+            return Err(DecodeError::InvalidByteLength {
+                len: offset,
+                expected: FIXED_SIZE,
+            });
+        }
+
+        // 5. Decode variable field: layers
+        let layers = Vec::<HashTreeLayer<TH>>::from_ssz_bytes(&bytes[offset..])?;
+
+        Ok(Self {
+            depth,
+            lowest_layer,
+            layers,
+        })
+    }
 }
 
 /// Opening in a hash-tree: a co-path, without the leaf
@@ -110,6 +255,67 @@ pub struct HashTreeOpening<TH: TweakableHash> {
     /// If the tree has depth h, i.e, 2^h leafs
     /// the co-path should have size D
     co_path: Vec<TH::Domain>,
+}
+
+impl<TH: TweakableHash> Encode for HashTreeOpening<TH> {
+    fn is_ssz_fixed_len() -> bool {
+        false
+    }
+
+    fn ssz_bytes_len(&self) -> usize {
+        // - Fixed part: offset (4 bytes)
+        // - Variable part: co_path
+        4 + self.co_path.ssz_bytes_len()
+    }
+
+    fn ssz_append(&self, buf: &mut Vec<u8>) {
+        // SSZ Container encoding order:
+        // 1. Offset for variable field: co_path
+        // Only the offset itself in fixed part
+        let offset: u32 = 4;
+        buf.extend_from_slice(&offset.to_le_bytes());
+
+        // 2. Variable data: co_path
+        self.co_path.ssz_append(buf);
+    }
+}
+
+impl<TH: TweakableHash> Decode for HashTreeOpening<TH> {
+    fn is_ssz_fixed_len() -> bool {
+        false
+    }
+
+    fn from_ssz_bytes(bytes: &[u8]) -> Result<Self, DecodeError> {
+        // Minimum size: offset (4 bytes)
+        const FIXED_SIZE: usize = 4;
+        if bytes.len() < FIXED_SIZE {
+            return Err(DecodeError::InvalidByteLength {
+                len: bytes.len(),
+                expected: FIXED_SIZE,
+            });
+        }
+
+        // 1. Read offset for variable field
+        let offset = u32::from_le_bytes(bytes[0..4].try_into().map_err(|_| {
+            DecodeError::InvalidByteLength {
+                len: bytes.len(),
+                expected: 4,
+            }
+        })?) as usize;
+
+        // 2. Validate offset points to end of fixed part
+        if offset != FIXED_SIZE {
+            return Err(DecodeError::InvalidByteLength {
+                len: offset,
+                expected: FIXED_SIZE,
+            });
+        }
+
+        // 3. Decode variable field: co_path
+        let co_path = Vec::<TH::Domain>::from_ssz_bytes(&bytes[offset..])?;
+
+        Ok(Self { co_path })
+    }
 }
 
 impl<TH> HashSubTree<TH>
@@ -173,7 +379,7 @@ where
             let prev = &layers[level - lowest_layer];
 
             // Parent layer starts at half the previous start index
-            let parent_start = prev.start_index >> 1;
+            let parent_start = (prev.start_index >> 1) as usize;
 
             // Compute all parents in parallel, pairing children two-by-two
             //
@@ -199,8 +405,8 @@ where
         }
 
         Self {
-            depth,
-            lowest_layer,
+            depth: depth as u64,
+            lowest_layer: lowest_layer as u64,
             layers,
         }
     }
@@ -287,7 +493,7 @@ where
         let bottom_tree_root = bottom_tree.layers[depth / 2].nodes[bottom_tree_index % 2];
         bottom_tree.layers.truncate(depth / 2);
         bottom_tree.layers.push(HashTreeLayer {
-            start_index: bottom_tree_index,
+            start_index: bottom_tree_index as u64,
             nodes: vec![bottom_tree_root],
         });
 
@@ -316,29 +522,28 @@ where
             "Hash-Tree path: Need at least one layer"
         );
         assert!(
-            (position as u64) >= (self.layers[0].start_index as u64),
+            (position as u64) >= self.layers[0].start_index,
             "Hash-Tree path: Invalid position, position before start index"
         );
         assert!(
-            (position as u64)
-                < (self.layers[0].start_index as u64 + self.layers[0].nodes.len() as u64),
+            (position as u64) < self.layers[0].start_index + self.layers[0].nodes.len() as u64,
             "Hash-Tree path: Invalid position, position too large"
         );
 
         // in our co-path, we will have one node per layer
         // except the final layer (which is just the root)
-        let mut co_path = Vec::with_capacity(self.depth);
+        let mut co_path = Vec::with_capacity(self.depth as usize);
         let mut current_position = position;
-        for l in 0..(self.depth - self.lowest_layer) {
+        for l in 0..((self.depth - self.lowest_layer) as usize) {
             // if we are already at the root, we can stop (this is a special case for bottom trees)
             if self.layers[l].nodes.len() <= 1 {
                 break;
             }
             // position of the sibling that we want to include
             let sibling_position = current_position ^ 0x01;
-            let sibling_position_in_vec = sibling_position - self.layers[l].start_index as u32;
-            // add to the co-path
-            let sibling = self.layers[l].nodes[sibling_position_in_vec as usize];
+            let sibling_position_in_vec =
+                (sibling_position as u64 - self.layers[l].start_index) as usize;
+            let sibling = self.layers[l].nodes[sibling_position_in_vec];
             co_path.push(sibling);
             // new position in next layer
             current_position >>= 1;
@@ -736,5 +941,324 @@ mod tests {
             start_bottom_tree_index,
             leaf_len,
         );
+    }
+
+    #[test]
+    fn test_ssz_encoding_structure() {
+        let mut rng = rand::rng();
+
+        // HashTreeLayer: Generate sample nodes
+        let nodes: Vec<_> = (0..3).map(|_| TestTH::rand_domain(&mut rng)).collect();
+        // Create layer with specific index
+        let layer = HashTreeLayer::<TestTH> {
+            start_index: 256,
+            nodes,
+        };
+        // Serialize to bytes
+        let encoded = layer.as_ssz_bytes();
+        // Verify minimum size: 8 bytes for index + 4 bytes for offset
+        assert!(encoded.len() >= 12);
+        // Verify index value in bytes 0-8
+        assert_eq!(u64::from_le_bytes(encoded[0..8].try_into().unwrap()), 256);
+        // Verify offset value in bytes 8-12 points to byte 12
+        assert_eq!(u32::from_le_bytes(encoded[8..12].try_into().unwrap()), 12);
+
+        // HashSubTree: Create minimal tree with no layers
+        let tree = HashSubTree::<TestTH> {
+            depth: 16,
+            lowest_layer: 8,
+            layers: vec![],
+        };
+        // Serialize to bytes
+        let encoded = tree.as_ssz_bytes();
+        // Verify minimum size: 8 + 8 + 4 = 20 bytes
+        assert!(encoded.len() >= 20);
+        // Verify depth value in bytes 0-8
+        assert_eq!(u64::from_le_bytes(encoded[0..8].try_into().unwrap()), 16);
+        // Verify lowest layer value in bytes 8-16
+        assert_eq!(u64::from_le_bytes(encoded[8..16].try_into().unwrap()), 8);
+        // Verify offset value in bytes 16-20 points to byte 20
+        assert_eq!(u32::from_le_bytes(encoded[16..20].try_into().unwrap()), 20);
+
+        // HashTreeOpening: Generate authentication path
+        let co_path: Vec<_> = (0..5).map(|_| TestTH::rand_domain(&mut rng)).collect();
+        // Create opening structure
+        let opening = HashTreeOpening::<TestTH> { co_path };
+        // Serialize to bytes
+        let encoded = opening.as_ssz_bytes();
+        // Verify minimum size: 4 bytes for offset
+        assert!(encoded.len() >= 4);
+        // Verify offset value in bytes 0-4 points to byte 4
+        assert_eq!(u32::from_le_bytes(encoded[0..4].try_into().unwrap()), 4);
+    }
+
+    #[test]
+    fn test_ssz_decoding_errors() {
+        // HashTreeLayer: Buffer too small (8 bytes instead of minimum 12)
+        let encoded = vec![0u8; 8];
+        // Attempt decode, expect error
+        let result = HashTreeLayer::<TestTH>::from_ssz_bytes(&encoded);
+        assert!(matches!(result, Err(DecodeError::InvalidByteLength { .. })));
+
+        // HashTreeLayer: Invalid offset value (99 instead of 12)
+        let mut encoded = vec![0u8; 12];
+        // Write zero for index field
+        encoded[0..8].copy_from_slice(&0u64.to_le_bytes());
+        // Write incorrect offset
+        encoded[8..12].copy_from_slice(&99u32.to_le_bytes());
+        // Attempt decode, expect error with expected value 12
+        let result = HashTreeLayer::<TestTH>::from_ssz_bytes(&encoded);
+        assert!(matches!(
+            result,
+            Err(DecodeError::InvalidByteLength { expected: 12, .. })
+        ));
+
+        // HashSubTree: Buffer too small (16 bytes instead of minimum 20)
+        let encoded = vec![0u8; 16];
+        let result = HashSubTree::<TestTH>::from_ssz_bytes(&encoded);
+        assert!(matches!(result, Err(DecodeError::InvalidByteLength { .. })));
+
+        // HashSubTree: Invalid offset value (100 instead of 20)
+        let mut encoded = vec![0u8; 20];
+        // Write depth field
+        encoded[0..8].copy_from_slice(&10u64.to_le_bytes());
+        // Write lowest layer field
+        encoded[8..16].copy_from_slice(&5u64.to_le_bytes());
+        // Write incorrect offset
+        encoded[16..20].copy_from_slice(&100u32.to_le_bytes());
+        let result = HashSubTree::<TestTH>::from_ssz_bytes(&encoded);
+        assert!(matches!(
+            result,
+            Err(DecodeError::InvalidByteLength { expected: 20, .. })
+        ));
+
+        // HashTreeOpening: Buffer too small (2 bytes instead of minimum 4)
+        let encoded = vec![0u8; 2];
+        let result = HashTreeOpening::<TestTH>::from_ssz_bytes(&encoded);
+        assert!(matches!(result, Err(DecodeError::InvalidByteLength { .. })));
+
+        // HashTreeOpening: Invalid offset value (10 instead of 4)
+        let mut encoded = vec![0u8; 4];
+        // Write incorrect offset
+        encoded[0..4].copy_from_slice(&10u32.to_le_bytes());
+        let result = HashTreeOpening::<TestTH>::from_ssz_bytes(&encoded);
+        assert!(matches!(
+            result,
+            Err(DecodeError::InvalidByteLength { expected: 4, .. })
+        ));
+    }
+
+    #[test]
+    fn test_ssz_determinism() {
+        let mut rng = rand::rng();
+
+        // HashTreeLayer: Generate random nodes
+        let nodes: Vec<_> = (0..7).map(|_| TestTH::rand_domain(&mut rng)).collect();
+        // Create structure
+        let layer = HashTreeLayer::<TestTH> {
+            start_index: 999,
+            nodes,
+        };
+        // Encode twice, verify identical bytes
+        let encoded1 = layer.as_ssz_bytes();
+        let encoded2 = layer.as_ssz_bytes();
+        assert_eq!(encoded1, encoded2);
+
+        // HashSubTree: Create tree with one layer
+        let layer = HashTreeLayer::<TestTH> {
+            start_index: 4,
+            nodes: (0..6).map(|_| TestTH::rand_domain(&mut rng)).collect(),
+        };
+        let tree = HashSubTree::<TestTH> {
+            depth: 20,
+            lowest_layer: 10,
+            layers: vec![layer],
+        };
+        // Encode twice, verify identical bytes
+        let encoded1 = tree.as_ssz_bytes();
+        let encoded2 = tree.as_ssz_bytes();
+        assert_eq!(encoded1, encoded2);
+
+        // HashTreeOpening: Generate random authentication path
+        let co_path: Vec<_> = (0..15).map(|_| TestTH::rand_domain(&mut rng)).collect();
+        let opening = HashTreeOpening::<TestTH> { co_path };
+        // Encode twice, verify identical bytes
+        let encoded1 = opening.as_ssz_bytes();
+        let encoded2 = opening.as_ssz_bytes();
+        assert_eq!(encoded1, encoded2);
+    }
+
+    #[test]
+    fn test_ssz_merkle_integration() {
+        let mut rng = rand::rng();
+        let parameter = TestTH::rand_parameter(&mut rng);
+
+        // Build tree: 8 leaves at depth 3
+        let num_leafs = 8;
+        let depth = 3;
+        let start_index = 0;
+        let leaf_len = 2;
+        // Generate leaf data
+        let mut leafs = Vec::new();
+        for _ in 0..num_leafs {
+            let leaf: Vec<_> = (0..leaf_len)
+                .map(|_| TestTH::rand_domain(&mut rng))
+                .collect();
+            leafs.push(leaf);
+        }
+        // Hash leaves for tree construction
+        let leafs_hashes: Vec<_> = leafs
+            .iter()
+            .enumerate()
+            .map(|(i, v)| TestTH::apply(&parameter, &TestTH::tree_tweak(0, i as u32), v.as_slice()))
+            .collect();
+        // Build complete merkle tree
+        let tree = HashSubTree::<TestTH>::new_subtree(
+            &mut rng,
+            0,
+            depth,
+            start_index,
+            &parameter,
+            leafs_hashes,
+        );
+        let root = tree.root();
+
+        // Test tree serialization roundtrip
+        let tree_encoded = tree.as_ssz_bytes();
+        let tree_decoded = HashSubTree::<TestTH>::from_ssz_bytes(&tree_encoded).unwrap();
+        // Verify decoded tree has same root
+        assert_eq!(root, tree_decoded.root());
+
+        // Test authentication path at position 3
+        let position = 3u32;
+        let path = tree.path(position);
+        let leaf = &leafs[position as usize];
+
+        // Test path serialization roundtrip
+        let path_encoded = path.as_ssz_bytes();
+        let path_decoded = HashTreeOpening::<TestTH>::from_ssz_bytes(&path_encoded).unwrap();
+
+        // Verify decoded path authenticates correctly
+        assert!(hash_tree_verify(
+            &parameter,
+            &root,
+            position,
+            leaf,
+            &path_decoded
+        ));
+
+        // Verify path from decoded tree also works
+        let path_from_decoded = tree_decoded.path(position);
+        assert!(hash_tree_verify(
+            &parameter,
+            &root,
+            position,
+            leaf,
+            &path_from_decoded
+        ));
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_hash_tree_layer_ssz_roundtrip(
+            start_index in 0u64..1000,
+            num_nodes in 0usize..20,
+        ) {
+            // Generate random nodes
+            let mut rng = rand::rng();
+            let nodes: Vec<_> = (0..num_nodes).map(|_| TestTH::rand_domain(&mut rng)).collect();
+            // Create layer structure
+            let layer = HashTreeLayer::<TestTH> {
+                start_index,
+                nodes,
+            };
+
+            // Perform serialization roundtrip
+            let encoded = layer.as_ssz_bytes();
+            let decoded = HashTreeLayer::<TestTH>::from_ssz_bytes(&encoded).unwrap();
+
+            // Verify index field preserved
+            prop_assert_eq!(layer.start_index, decoded.start_index);
+            // Verify node count preserved
+            prop_assert_eq!(layer.nodes.len(), decoded.nodes.len());
+            // Verify each node value preserved
+            for i in 0..layer.nodes.len() {
+                prop_assert_eq!(layer.nodes[i], decoded.nodes[i]);
+            }
+            // Verify determinism by re-encoding
+            let reencoded = decoded.as_ssz_bytes();
+            prop_assert_eq!(encoded, reencoded);
+        }
+
+        #[test]
+        fn proptest_hash_sub_tree_ssz_roundtrip(
+            depth in 1u64..32,
+            lowest_layer in 0u64..16,
+            num_layers in 0usize..5,
+        ) {
+            // Ensure valid tree configuration
+            prop_assume!(lowest_layer < depth);
+
+            // Generate random layers
+            let mut rng = rand::rng();
+            let mut layers = Vec::new();
+            for _ in 0..num_layers {
+                let num_nodes = rng.random_range(0..10);
+                let layer = HashTreeLayer::<TestTH> {
+                    start_index: rng.random_range(0..100),
+                    nodes: (0..num_nodes).map(|_| TestTH::rand_domain(&mut rng)).collect(),
+                };
+                layers.push(layer);
+            }
+            // Create tree structure
+            let tree = HashSubTree::<TestTH> {
+                depth,
+                lowest_layer,
+                layers,
+            };
+
+            // Perform serialization roundtrip
+            let encoded = tree.as_ssz_bytes();
+            let decoded = HashSubTree::<TestTH>::from_ssz_bytes(&encoded).unwrap();
+
+            // Verify tree metadata preserved
+            prop_assert_eq!(tree.depth, decoded.depth);
+            prop_assert_eq!(tree.lowest_layer, decoded.lowest_layer);
+            // Verify layer count preserved
+            prop_assert_eq!(tree.layers.len(), decoded.layers.len());
+            // Verify each layer structure preserved
+            for i in 0..tree.layers.len() {
+                prop_assert_eq!(tree.layers[i].start_index, decoded.layers[i].start_index);
+                prop_assert_eq!(tree.layers[i].nodes.len(), decoded.layers[i].nodes.len());
+            }
+            // Verify determinism by re-encoding
+            let reencoded = decoded.as_ssz_bytes();
+            prop_assert_eq!(encoded, reencoded);
+        }
+
+        #[test]
+        fn proptest_hash_tree_opening_ssz_roundtrip(
+            co_path_len in 0usize..64,
+        ) {
+            // Generate random authentication path
+            let mut rng = rand::rng();
+            let co_path: Vec<_> = (0..co_path_len).map(|_| TestTH::rand_domain(&mut rng)).collect();
+            // Create opening structure
+            let opening = HashTreeOpening::<TestTH> { co_path };
+
+            // Perform serialization roundtrip
+            let encoded = opening.as_ssz_bytes();
+            let decoded = HashTreeOpening::<TestTH>::from_ssz_bytes(&encoded).unwrap();
+
+            // Verify path length preserved
+            prop_assert_eq!(opening.co_path.len(), decoded.co_path.len());
+            // Verify each path element preserved
+            for i in 0..opening.co_path.len() {
+                prop_assert_eq!(opening.co_path[i], decoded.co_path[i]);
+            }
+            // Verify determinism by re-encoding
+            let reencoded = decoded.as_ssz_bytes();
+            prop_assert_eq!(encoded, reencoded);
+        }
     }
 }

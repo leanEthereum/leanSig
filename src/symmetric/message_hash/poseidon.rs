@@ -8,6 +8,7 @@ use super::MessageHash;
 use crate::F;
 use crate::MESSAGE_LENGTH;
 use crate::TWEAK_SEPARATOR_FOR_MESSAGE_HASH;
+use crate::array::FieldArray;
 use crate::poseidon2_24;
 use crate::symmetric::tweak_hash::poseidon::poseidon_compress;
 
@@ -130,16 +131,16 @@ where
     [F; PARAMETER_LEN]: Serialize + DeserializeOwned,
     [F; RAND_LEN_FE]: Serialize + DeserializeOwned,
 {
-    type Parameter = [F; PARAMETER_LEN];
+    type Parameter = FieldArray<PARAMETER_LEN>;
 
-    type Randomness = [F; RAND_LEN_FE];
+    type Randomness = FieldArray<RAND_LEN_FE>;
 
     const DIMENSION: usize = DIMENSION;
 
     const BASE: usize = BASE;
 
     fn rand<R: rand::Rng>(rng: &mut R) -> Self::Randomness {
-        rng.random()
+        FieldArray(rng.random())
     }
 
     fn apply(
@@ -238,7 +239,7 @@ mod tests {
     fn test_apply() {
         let mut rng = rand::rng();
 
-        let parameter = rng.random();
+        let parameter = FieldArray(rng.random());
 
         let message = rng.random();
 
@@ -253,7 +254,7 @@ mod tests {
     fn test_apply_w1() {
         let mut rng = rand::rng();
 
-        let parameter = rng.random();
+        let parameter = FieldArray(rng.random());
 
         let message = rng.random();
 
