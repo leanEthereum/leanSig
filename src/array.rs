@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize, de::Visitor};
+use serde::{Deserialize, Deserializer, Serialize, de::Visitor, ser::SerializeTuple};
 use ssz::{Decode, DecodeError, Encode};
 use std::ops::{Deref, DerefMut};
 
@@ -91,7 +91,11 @@ impl<const N: usize> Serialize for FieldArray<N> {
     where
         S: serde::Serializer,
     {
-        serializer.collect_seq(self.0.iter().map(PrimeField32::as_canonical_u32))
+        let mut seq = serializer.serialize_tuple(N)?;
+        for element in self.0.iter().map(PrimeField32::as_canonical_u32) {
+            seq.serialize_element(&element)?;
+        }
+        seq.end()
     }
 }
 
@@ -124,7 +128,7 @@ impl<'de, const N: usize> Deserialize<'de> for FieldArray<N> {
             }
         }
 
-        deserializer.deserialize_seq(FieldArrayVisitor::<N>)
+        deserializer.deserialize_tuple(N, FieldArrayVisitor::<N>)
     }
 }
 
@@ -354,5 +358,13 @@ mod tests {
         // Different arrays should not be equal
         assert_ne!(arr1, arr3);
         assert_ne!(arr2, arr3);
+    }
+
+    #[test]
+    fn test_bincode_no_size_prefix() {
+        let config = bincode::config::standard().with_fixed_int_encoding();
+        let arr = FieldArray([F::new(1), F::new(2), F::new(3)]);
+        let encoded = bincode::serde::encode_to_vec(arr, config).unwrap();
+        assert_eq!(encoded.len(), arr.len() * F::NUM_BYTES);
     }
 }
