@@ -17,6 +17,8 @@ use crate::{
 
 use super::{SignatureScheme, SigningError};
 
+use ssz::{Decode, DecodeError, Encode};
+
 /// Implementation of the generalized XMSS signature scheme
 /// from any incomparable encoding scheme and any tweakable hash
 ///
@@ -525,6 +527,53 @@ where
     }
 }
 
+impl<TH: TweakableHash> Encode for GeneralizedXMSSPublicKey<TH> {
+    fn is_ssz_fixed_len() -> bool {
+        <TH::Domain as Encode>::is_ssz_fixed_len() && <TH::Parameter as Encode>::is_ssz_fixed_len()
+    }
+
+    fn ssz_fixed_len() -> usize {
+        <TH::Domain as Encode>::ssz_fixed_len() + <TH::Parameter as Encode>::ssz_fixed_len()
+    }
+
+    fn ssz_bytes_len(&self) -> usize {
+        self.root.ssz_bytes_len() + self.parameter.ssz_bytes_len()
+    }
+
+    fn ssz_append(&self, buf: &mut Vec<u8>) {
+        self.root.ssz_append(buf);
+        self.parameter.ssz_append(buf);
+    }
+}
+
+impl<TH: TweakableHash> Decode for GeneralizedXMSSPublicKey<TH> {
+    fn is_ssz_fixed_len() -> bool {
+        <TH::Domain as Decode>::is_ssz_fixed_len() && <TH::Parameter as Decode>::is_ssz_fixed_len()
+    }
+
+    fn ssz_fixed_len() -> usize {
+        <TH::Domain as Decode>::ssz_fixed_len() + <TH::Parameter as Decode>::ssz_fixed_len()
+    }
+
+    fn from_ssz_bytes(bytes: &[u8]) -> Result<Self, DecodeError> {
+        let expected_len = <Self as Decode>::ssz_fixed_len();
+        if bytes.len() != expected_len {
+            return Err(DecodeError::InvalidByteLength {
+                len: bytes.len(),
+                expected: expected_len,
+            });
+        }
+
+        let root_len = <TH::Domain as Decode>::ssz_fixed_len();
+        let (root_bytes, param_bytes) = bytes.split_at(root_len);
+
+        let root = TH::Domain::from_ssz_bytes(root_bytes)?;
+        let parameter = TH::Parameter::from_ssz_bytes(param_bytes)?;
+
+        Ok(Self { root, parameter })
+    }
+}
+
 /// Instantiations of the generalized XMSS signature scheme based on Poseidon2
 pub mod instantiations_poseidon;
 /// Instantiations of the generalized XMSS signature scheme based on the
@@ -534,6 +583,7 @@ pub mod instantiations_poseidon_top_level;
 #[cfg(test)]
 mod tests {
     use crate::{
+        array::FieldArray,
         inc_encoding::target_sum::TargetSumEncoding,
         signature::test_templates::test_signature_scheme_correctness,
         symmetric::{
@@ -544,6 +594,13 @@ mod tests {
     };
 
     use super::*;
+
+    use crate::{F, symmetric::tweak_hash::poseidon::PoseidonTweakHash};
+    use p3_field::PrimeCharacteristicRing;
+    use rand::rng;
+    use ssz::{Decode, Encode};
+
+    type TestTH = PoseidonTweakHash<5, 7, 2, 9, 155>;
 
     #[test]
     pub fn test_target_sum_poseidon() {
@@ -678,5 +735,146 @@ mod tests {
         // large padding to the left needed because of two bottom trees constraint
         let (start, end_excl) = expand_activation_time::<LOG_LIFETIME>(12, 2);
         assert!((start == 2) && (end_excl == 4));
+    }
+
+    #[test]
+    fn test_public_key_ssz_roundtrip() {
+        let mut rng = rng();
+        let root = TestTH::rand_domain(&mut rng);
+        let parameter = TestTH::rand_parameter(&mut rng);
+
+        let public_key = GeneralizedXMSSPublicKey::<TestTH> { root, parameter };
+
+        // Encode to SSZ
+        let encoded = public_key.as_ssz_bytes();
+
+        // Check expected size: (7 + 5) * 4 = 48 bytes
+        assert_eq!(encoded.len(), 48);
+
+        // Decode from SSZ
+        let decoded =
+            GeneralizedXMSSPublicKey::<TestTH>::from_ssz_bytes(&encoded).expect("Decoding failed");
+
+        // Check fields match
+        assert_eq!(public_key.root, decoded.root);
+        assert_eq!(public_key.parameter, decoded.parameter);
+    }
+
+    #[test]
+    fn test_public_key_ssz_deterministic() {
+        let mut rng = rng();
+        let root = TestTH::rand_domain(&mut rng);
+        let parameter = TestTH::rand_parameter(&mut rng);
+
+        let public_key = GeneralizedXMSSPublicKey::<TestTH> { root, parameter };
+
+        // Encode multiple times
+        let encoded1 = public_key.as_ssz_bytes();
+        let encoded2 = public_key.as_ssz_bytes();
+
+        // Should be identical
+        assert_eq!(encoded1, encoded2);
+    }
+
+    #[test]
+    fn test_public_key_ssz_zero_values() {
+        let root = FieldArray([F::ZERO; 7]);
+        let parameter = FieldArray([F::ZERO; 5]);
+
+        let public_key = GeneralizedXMSSPublicKey::<TestTH> { root, parameter };
+
+        let encoded = public_key.as_ssz_bytes();
+        let decoded =
+            GeneralizedXMSSPublicKey::<TestTH>::from_ssz_bytes(&encoded).expect("Decoding failed");
+
+        assert_eq!(public_key.root, decoded.root);
+        assert_eq!(public_key.parameter, decoded.parameter);
+    }
+
+    #[test]
+    fn test_public_key_ssz_max_values() {
+        use p3_field::PrimeField32;
+
+        let max_val = F::ORDER_U32 - 1;
+        let root = FieldArray([F::new(max_val); 7]);
+        let parameter = FieldArray([F::new(max_val); 5]);
+
+        let public_key = GeneralizedXMSSPublicKey::<TestTH> { root, parameter };
+
+        let encoded = public_key.as_ssz_bytes();
+        let decoded =
+            GeneralizedXMSSPublicKey::<TestTH>::from_ssz_bytes(&encoded).expect("Decoding failed");
+
+        assert_eq!(public_key.root, decoded.root);
+        assert_eq!(public_key.parameter, decoded.parameter);
+    }
+
+    #[test]
+    fn test_public_key_ssz_invalid_length_too_short() {
+        let bytes = vec![0u8; 47]; // Should be 48 bytes
+        let result = GeneralizedXMSSPublicKey::<TestTH>::from_ssz_bytes(&bytes);
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DecodeError::InvalidByteLength {
+                len: 47,
+                expected: 48
+            })
+        ));
+    }
+
+    #[test]
+    fn test_public_key_ssz_invalid_length_too_long() {
+        let bytes = vec![0u8; 49]; // Should be 48 bytes
+        let result = GeneralizedXMSSPublicKey::<TestTH>::from_ssz_bytes(&bytes);
+        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(DecodeError::InvalidByteLength {
+                len: 49,
+                expected: 48
+            })
+        ));
+    }
+
+    #[test]
+    fn test_public_key_ssz_fixed_len_trait() {
+        assert!(<GeneralizedXMSSPublicKey::<TestTH> as Encode>::is_ssz_fixed_len());
+        assert_eq!(
+            <GeneralizedXMSSPublicKey::<TestTH> as Encode>::ssz_fixed_len(),
+            48
+        );
+    }
+
+    #[test]
+    fn test_public_key_ssz_specific_values() {
+        // Test with specific known values to verify byte ordering
+        let root = FieldArray([
+            F::new(1),
+            F::new(2),
+            F::new(3),
+            F::new(4),
+            F::new(5),
+            F::new(6),
+            F::new(7),
+        ]);
+        let parameter = FieldArray([F::new(10), F::new(20), F::new(30), F::new(40), F::new(50)]);
+
+        let public_key = GeneralizedXMSSPublicKey::<TestTH> { root, parameter };
+
+        let encoded = public_key.as_ssz_bytes();
+
+        // Check first few bytes (little-endian encoding of 1)
+        assert_eq!(&encoded[0..4], &[1, 0, 0, 0]);
+        // Check encoding of 2
+        assert_eq!(&encoded[4..8], &[2, 0, 0, 0]);
+        // Check encoding of 10 (first parameter value)
+        assert_eq!(&encoded[28..32], &[10, 0, 0, 0]);
+
+        let decoded =
+            GeneralizedXMSSPublicKey::<TestTH>::from_ssz_bytes(&encoded).expect("Decoding failed");
+
+        assert_eq!(public_key.root, decoded.root);
+        assert_eq!(public_key.parameter, decoded.parameter);
     }
 }

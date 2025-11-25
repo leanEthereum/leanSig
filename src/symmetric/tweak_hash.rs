@@ -1,5 +1,6 @@
 use rand::Rng;
 use serde::{Serialize, de::DeserializeOwned};
+use ssz::{Decode, Encode};
 
 use crate::symmetric::prf::Pseudorandom;
 
@@ -17,13 +18,21 @@ use crate::symmetric::prf::Pseudorandom;
 /// applications in Merkle trees.
 pub trait TweakableHash {
     /// Public parameter type for the hash function
-    type Parameter: Copy + Sized + Send + Sync + Serialize + DeserializeOwned;
+    type Parameter: Copy + Sized + Send + Sync + Serialize + DeserializeOwned + Encode + Decode;
 
     /// Tweak type for domain separation
     type Tweak;
 
     /// Domain element type (defines output and input types to the hash)
-    type Domain: Copy + PartialEq + Sized + Send + Sync + Serialize + DeserializeOwned;
+    type Domain: Copy
+        + PartialEq
+        + Sized
+        + Send
+        + Sync
+        + Serialize
+        + DeserializeOwned
+        + Encode
+        + Decode;
 
     /// Generates a random public parameter.
     fn rand_parameter<R: Rng>(rng: &mut R) -> Self::Parameter;
