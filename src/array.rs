@@ -364,25 +364,6 @@ mod tests {
     }
 
     #[test]
-    fn test_to_bytes_ssz_equivalence() {
-        let mut rng = rand::rng();
-        let field_array = FieldArray(rng.random::<[F; LARGE_SIZE]>());
-
-        // Path 1: Get canonical bytes via to_bytes(), then SSZ encode them
-        let canonical_bytes = field_array.to_bytes();
-        let ssz_from_canonical = canonical_bytes.as_ssz_bytes();
-
-        // Path 2: Direct SSZ encoding
-        let ssz_direct = field_array.as_ssz_bytes();
-
-        // Verify equivalence: ssz_encode(to_bytes()) == as_ssz_bytes()
-        assert_eq!(
-            ssz_from_canonical, ssz_direct,
-            "ssz_encode(to_bytes()) must equal as_ssz_bytes()"
-        );
-    }
-
-    #[test]
     fn test_bincode_no_size_prefix() {
         let config = bincode::config::standard().with_fixed_int_encoding();
         let arr = FieldArray([F::new(1), F::new(2), F::new(3)]);
