@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize, de::Visitor};
+use serde::{Deserialize, Deserializer, Serialize, de::Visitor, ser::SerializeTuple};
 use ssz::{Decode, DecodeError, Encode};
 use std::ops::{Deref, DerefMut};
 
@@ -94,7 +94,11 @@ impl<const N: usize> Serialize for FieldArray<N> {
     where
         S: serde::Serializer,
     {
-        serializer.collect_seq(self.0.iter().map(PrimeField32::as_canonical_u32))
+        let mut seq = serializer.serialize_tuple(N)?;
+        for element in self.0.iter().map(PrimeField32::as_canonical_u32) {
+            seq.serialize_element(&element)?;
+        }
+        seq.end()
     }
 }
 
@@ -127,7 +131,7 @@ impl<'de, const N: usize> Deserialize<'de> for FieldArray<N> {
             }
         }
 
-        deserializer.deserialize_seq(FieldArrayVisitor::<N>)
+        deserializer.deserialize_tuple(N, FieldArrayVisitor::<N>)
     }
 }
 
@@ -359,15 +363,6 @@ mod tests {
         assert_ne!(arr2, arr3);
     }
 
-    /// Test that `to_bytes()` output, when SSZ-encoded, equals direct SSZ encoding.
-    ///
-    /// This test verifies the critical equivalence guarantee:
-    /// `ssz_encode(object.to_bytes()) == object.as_ssz_bytes()`
-    ///
-    /// This ensures that custom clients can:
-    /// 1. Call `object.to_bytes()` to get canonical bytes
-    /// 2. Pass those bytes to their own SSZ encoder
-    /// 3. Get identical results to the reference SSZ implementation
     #[test]
     fn test_to_bytes_ssz_equivalence() {
         let mut rng = rand::rng();
@@ -385,5 +380,12 @@ mod tests {
             ssz_from_canonical, ssz_direct,
             "ssz_encode(to_bytes()) must equal as_ssz_bytes()"
         );
+
+      #[test]
+    fn test_bincode_no_size_prefix() {
+        let config = bincode::config::standard().with_fixed_int_encoding();
+        let arr = FieldArray([F::new(1), F::new(2), F::new(3)]);
+        let encoded = bincode::serde::encode_to_vec(arr, config).unwrap();
+        assert_eq!(encoded.len(), arr.len() * F::NUM_BYTES);
     }
 }
