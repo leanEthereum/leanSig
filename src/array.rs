@@ -380,8 +380,9 @@ mod tests {
             ssz_from_canonical, ssz_direct,
             "ssz_encode(to_bytes()) must equal as_ssz_bytes()"
         );
+    }
 
-      #[test]
+    #[test]
     fn test_bincode_no_size_prefix() {
         let config = bincode::config::standard().with_fixed_int_encoding();
         let arr = FieldArray([F::new(1), F::new(2), F::new(3)]);
