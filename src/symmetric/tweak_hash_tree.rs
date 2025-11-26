@@ -1,3 +1,4 @@
+use crate::serialization::Serializable;
 use crate::symmetric::tweak_hash::TweakableHash;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -81,6 +82,8 @@ impl<TH: TweakableHash> Decode for HashTreeLayer<TH> {
         Ok(Self { start_index, nodes })
     }
 }
+
+impl<TH: TweakableHash> Serializable for HashTreeLayer<TH> {}
 
 impl<TH: TweakableHash> HashTreeLayer<TH> {
     /// Construct a layer from a contiguous run of nodes and pad it so that:
@@ -317,6 +320,10 @@ impl<TH: TweakableHash> Decode for HashTreeOpening<TH> {
         Ok(Self { co_path })
     }
 }
+
+impl<TH: TweakableHash> Serializable for HashTreeOpening<TH> {}
+
+impl<TH: TweakableHash> Serializable for HashSubTree<TH> {}
 
 impl<TH> HashSubTree<TH>
 where
@@ -1260,5 +1267,89 @@ mod tests {
             let reencoded = decoded.as_ssz_bytes();
             prop_assert_eq!(encoded, reencoded);
         }
+    }
+
+    #[test]
+    fn test_hash_tree_layer_to_bytes_ssz_equivalence() {
+        use crate::serialization::Serializable;
+
+        let mut rng = rand::rng();
+        let nodes: Vec<_> = (0..10).map(|_| TestTH::rand_domain(&mut rng)).collect();
+        let layer = HashTreeLayer::<TestTH> {
+            start_index: 42,
+            nodes,
+        };
+
+        // Path 1: Get canonical bytes via to_bytes(), then SSZ encode them
+        let canonical_bytes = layer.to_bytes();
+        let ssz_from_canonical = canonical_bytes.as_ssz_bytes();
+
+        // Path 2: Direct SSZ encoding
+        let ssz_direct = layer.as_ssz_bytes();
+
+        // Verify equivalence: ssz_encode(to_bytes()) == as_ssz_bytes()
+        assert_eq!(
+            ssz_from_canonical, ssz_direct,
+            "HashTreeLayer: ssz_encode(to_bytes()) must equal as_ssz_bytes()"
+        );
+    }
+
+    #[test]
+    fn test_hash_sub_tree_to_bytes_ssz_equivalence() {
+        let mut rng = rand::rng();
+
+        // Create a simple subtree with 2 layers
+        let layer1_nodes: Vec<_> = (0..4).map(|_| TestTH::rand_domain(&mut rng)).collect();
+        let layer2_nodes: Vec<_> = (0..2).map(|_| TestTH::rand_domain(&mut rng)).collect();
+
+        let layers = vec![
+            HashTreeLayer::<TestTH> {
+                start_index: 0,
+                nodes: layer1_nodes,
+            },
+            HashTreeLayer::<TestTH> {
+                start_index: 0,
+                nodes: layer2_nodes,
+            },
+        ];
+
+        let tree = HashSubTree::<TestTH> {
+            depth: 8,
+            lowest_layer: 0,
+            layers,
+        };
+
+        // Path 1: Get canonical bytes via to_bytes(), then SSZ encode them
+        let canonical_bytes = tree.to_bytes();
+        let ssz_from_canonical = canonical_bytes.as_ssz_bytes();
+
+        // Path 2: Direct SSZ encoding
+        let ssz_direct = tree.as_ssz_bytes();
+
+        // Verify equivalence: ssz_encode(to_bytes()) == as_ssz_bytes()
+        assert_eq!(
+            ssz_from_canonical, ssz_direct,
+            "HashSubTree: ssz_encode(to_bytes()) must equal as_ssz_bytes()"
+        );
+    }
+
+    #[test]
+    fn test_hash_tree_opening_to_bytes_ssz_equivalence() {
+        let mut rng = rand::rng();
+        let co_path: Vec<_> = (0..20).map(|_| TestTH::rand_domain(&mut rng)).collect();
+        let opening = HashTreeOpening::<TestTH> { co_path };
+
+        // Path 1: Get canonical bytes via to_bytes(), then SSZ encode them
+        let canonical_bytes = opening.to_bytes();
+        let ssz_from_canonical = canonical_bytes.as_ssz_bytes();
+
+        // Path 2: Direct SSZ encoding
+        let ssz_direct = opening.as_ssz_bytes();
+
+        // Verify equivalence: ssz_encode(to_bytes()) == as_ssz_bytes()
+        assert_eq!(
+            ssz_from_canonical, ssz_direct,
+            "HashTreeOpening: ssz_encode(to_bytes()) must equal as_ssz_bytes()"
+        );
     }
 }

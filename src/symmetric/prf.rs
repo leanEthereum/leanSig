@@ -1,12 +1,12 @@
 use rand::Rng;
-use serde::{Serialize, de::DeserializeOwned};
-use ssz::{Decode, Encode};
+
+use crate::serialization::Serializable;
 
 use crate::MESSAGE_LENGTH;
 
 /// Trait to model a pseudorandom function (PRF)
 pub trait Pseudorandom {
-    type Key: Send + Sync + Serialize + DeserializeOwned + Encode + Decode;
+    type Key: Send + Sync + Serializable;
     type Domain;
     type Randomness;
 

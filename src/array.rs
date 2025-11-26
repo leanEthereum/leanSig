@@ -3,6 +3,7 @@ use ssz::{Decode, DecodeError, Encode};
 use std::ops::{Deref, DerefMut};
 
 use crate::F;
+use crate::serialization::Serializable;
 use p3_field::{PrimeCharacteristicRing, PrimeField32, RawDataSerializable};
 
 /// A wrapper around an array of field elements that implements SSZ Encode/Decode.
@@ -85,6 +86,8 @@ impl<const N: usize> Decode for FieldArray<N> {
         Ok(Self(arr))
     }
 }
+
+impl<const N: usize> Serializable for FieldArray<N> {}
 
 impl<const N: usize> Serialize for FieldArray<N> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -354,5 +357,33 @@ mod tests {
         // Different arrays should not be equal
         assert_ne!(arr1, arr3);
         assert_ne!(arr2, arr3);
+    }
+
+    /// Test that `to_bytes()` output, when SSZ-encoded, equals direct SSZ encoding.
+    ///
+    /// This test verifies the critical equivalence guarantee:
+    /// `ssz_encode(object.to_bytes()) == object.as_ssz_bytes()`
+    ///
+    /// This ensures that custom clients can:
+    /// 1. Call `object.to_bytes()` to get canonical bytes
+    /// 2. Pass those bytes to their own SSZ encoder
+    /// 3. Get identical results to the reference SSZ implementation
+    #[test]
+    fn test_to_bytes_ssz_equivalence() {
+        let mut rng = rand::rng();
+        let field_array = FieldArray(rng.random::<[F; LARGE_SIZE]>());
+
+        // Path 1: Get canonical bytes via to_bytes(), then SSZ encode them
+        let canonical_bytes = field_array.to_bytes();
+        let ssz_from_canonical = canonical_bytes.as_ssz_bytes();
+
+        // Path 2: Direct SSZ encoding
+        let ssz_direct = field_array.as_ssz_bytes();
+
+        // Verify equivalence: ssz_encode(to_bytes()) == as_ssz_bytes()
+        assert_eq!(
+            ssz_from_canonical, ssz_direct,
+            "ssz_encode(to_bytes()) must equal as_ssz_bytes()"
+        );
     }
 }
