@@ -43,3 +43,111 @@ pub trait MessageHash {
 
 pub mod poseidon;
 pub mod top_level_poseidon;
+
+#[cfg(test)]
+/// Splits a list of bytes into smaller fixed-size bit chunks.
+///
+/// Each byte in the input slice is divided into `chunk_size`-bit chunks,
+/// starting from the least significant bits. The `chunk_size` must divide 8 exactly
+/// (i.e., valid values are 1, 2, 4, or 8), since each byte contains 8 bits.
+#[must_use]
+#[inline]
+pub fn bytes_to_chunks(bytes: &[u8], chunk_size: usize) -> Vec<u8> {
+    // Only the chunk sizes 1, 2, 4, or 8 are valid.
+    assert!(
+        matches!(chunk_size, 1 | 2 | 4 | 8),
+        "chunk_size must be 1, 2, 4, or 8"
+    );
+
+    // Calculate how many chunks each byte will produce and preallocate exactly.
+    let chunks_per_byte = 8 / chunk_size;
+    let mut out = Vec::with_capacity(bytes.len() * chunks_per_byte);
+
+    match chunk_size {
+        8 => {
+            out.extend_from_slice(bytes);
+        }
+        4 => {
+            for &b in bytes {
+                out.push(b & 0x0F);
+                out.push(b >> 4);
+            }
+        }
+        2 => {
+            for &b in bytes {
+                out.push(b & 0b11);
+                out.push((b >> 2) & 0b11);
+                out.push((b >> 4) & 0b11);
+                out.push((b >> 6) & 0b11);
+            }
+        }
+        1 => {
+            for &b in bytes {
+                out.push(b & 1);
+                out.push((b >> 1) & 1);
+                out.push((b >> 2) & 1);
+                out.push((b >> 3) & 1);
+                out.push((b >> 4) & 1);
+                out.push((b >> 5) & 1);
+                out.push((b >> 6) & 1);
+                out.push((b >> 7) & 1);
+            }
+        }
+        _ => unreachable!(),
+    }
+
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bytes_to_chunks;
+    use proptest::prelude::*;
+
+    #[test]
+    fn test_bytes_to_chunks() {
+        let byte_a: u8 = 0b0110_1100;
+        let byte_b: u8 = 0b1010_0110;
+
+        let bytes = [byte_a, byte_b];
+        let expected_chunks = [0b00, 0b11, 0b10, 0b01, 0b10, 0b01, 0b10, 0b10];
+
+        let chunks = bytes_to_chunks(&bytes, 2);
+
+        assert_eq!(chunks.len(), 8);
+
+        for i in 0..chunks.len() {
+            assert_eq!(chunks[i], expected_chunks[i]);
+        }
+
+        // now test chunk size 8
+        let chunks = bytes_to_chunks(&bytes, 8);
+
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0], byte_a);
+        assert_eq!(chunks[1], byte_b);
+    }
+
+    proptest! {
+        #[test]
+        fn prop_bytes_to_chunks_matches_manual_bit_extraction(
+            bytes in proptest::collection::vec(any::<u8>(), 0..32),
+            chunk_size in prop_oneof![Just(1usize), Just(2), Just(4), Just(8)],
+        ) {
+            let chunks = bytes_to_chunks(&bytes, chunk_size);
+
+            let chunks_per_byte = 8 / chunk_size;
+            let mut expected = Vec::with_capacity(bytes.len() * chunks_per_byte);
+
+            for &b in &bytes {
+                for i in 0..chunks_per_byte {
+                    let shifted = b >> (i * chunk_size);
+                    let mask = if chunk_size == 8 { 0xFF } else { (1u8 << chunk_size) - 1 };
+                    expected.push(shifted & mask);
+                }
+            }
+
+            prop_assert_eq!(chunks.as_slice(), expected.as_slice());
+        }
+    }
+}
