@@ -616,7 +616,7 @@ mod tests {
         const MAX_CHUNK_VALUE: usize = BASE - 1;
         const EXPECTED_SUM: usize = NUM_CHUNKS * MAX_CHUNK_VALUE / 2;
         type IE = TargetSumEncoding<MH, EXPECTED_SUM>;
-        const LOG_LIFETIME: usize = 10;
+        const LOG_LIFETIME: usize = 6;
         type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
         Sig::internal_consistency_check();
