@@ -605,6 +605,17 @@ mod tests {
 
     type TestTH = PoseidonTweakHash<5, 7, 2, 9, 155>;
 
+    // Compress a wide PRF output down to the four-field-element domain used by PoseidonTweakHash.
+    impl From<[F; 24]> for FieldArray<4> {
+        fn from(value: [F; 24]) -> Self {
+            let hash = crate::symmetric::tweak_hash::poseidon::poseidon_compress::<F, _, 24, 4>(
+                &crate::poseidon2_24(),
+                value.as_slice(),
+            );
+            FieldArray(hash)
+        }
+    }
+
     #[test]
     pub fn test_target_sum_poseidon() {
         // Note: do not use these parameters, they are just for testing
@@ -616,7 +627,7 @@ mod tests {
         const MAX_CHUNK_VALUE: usize = BASE - 1;
         const EXPECTED_SUM: usize = NUM_CHUNKS * MAX_CHUNK_VALUE / 2;
         type IE = TargetSumEncoding<MH, EXPECTED_SUM>;
-        const LOG_LIFETIME: usize = 6;
+        const LOG_LIFETIME: usize = 10;
         type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
         Sig::internal_consistency_check();
@@ -638,7 +649,7 @@ mod tests {
         const MAX_CHUNK_VALUE: usize = BASE - 1;
         const EXPECTED_SUM: usize = NUM_CHUNKS * MAX_CHUNK_VALUE / 2;
         type IE = TargetSumEncoding<MH, EXPECTED_SUM>;
-        const LOG_LIFETIME: usize = 6;
+        const LOG_LIFETIME: usize = 10;
         type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
         Sig::internal_consistency_check();
@@ -672,12 +683,12 @@ mod tests {
     #[test]
     pub fn test_large_base_poseidon() {
         // Note: do not use these parameters, they are just for testing
-        type PRF = ShakePRFtoF<4, 4>;
+        type PRF = ShakePRFtoF<24, 8>;
         type TH = PoseidonTweakHash<4, 4, 2, 8, 8>;
-        type MH = PoseidonMessageHash<4, 4, 2, 8, 256, 2, 9>;
+        type MH = PoseidonMessageHash<4, 8, 2, 8, 256, 2, 9>;
         const TARGET_SUM: usize = 8 * (256 - 1) / 2;
         type IE = TargetSumEncoding<MH, TARGET_SUM>;
-        const LOG_LIFETIME: usize = 6;
+        const LOG_LIFETIME: usize = 10;
         type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
         Sig::internal_consistency_check();
@@ -694,7 +705,7 @@ mod tests {
         type MH = PoseidonMessageHash<4, 4, 8, 256, 2, 2, 9>;
         const TARGET_SUM: usize = 128;
         type IE = TargetSumEncoding<MH, TARGET_SUM>;
-        const LOG_LIFETIME: usize = 6;
+        const LOG_LIFETIME: usize = 10;
         type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
         Sig::internal_consistency_check();
