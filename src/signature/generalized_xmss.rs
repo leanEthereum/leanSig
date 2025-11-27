@@ -677,7 +677,7 @@ mod tests {
         type MH = PoseidonMessageHash<4, 8, 8, 32, 256, 2, 9>;
         const TARGET_SUM: usize = 1 << 12;
         type IE = TargetSumEncoding<MH, TARGET_SUM>;
-        const LOG_LIFETIME: usize = 6;
+        const LOG_LIFETIME: usize = 10;
         type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
         Sig::internal_consistency_check();
