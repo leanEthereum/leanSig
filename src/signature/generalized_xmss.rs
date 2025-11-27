@@ -695,44 +695,6 @@ mod tests {
         assert_eq!(rho1, rho2);
     }
 
-    /*#[test]
-    pub fn test_large_base_sha() {
-        // Note: do not use these parameters, they are just for testing
-        type PRF = ShaPRF<24, 8>;
-        type TH = ShaTweak192192;
-
-        // use chunk size 8
-        type MH = ShaMessageHash<24, 8, 32, 8>;
-        const TARGET_SUM: usize = 1 << 12;
-        type IE = TargetSumEncoding<MH, TARGET_SUM>;
-        const LOG_LIFETIME: usize = 10;
-        type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
-
-        Sig::internal_consistency_check();
-
-        test_signature_scheme_correctness::<Sig>(0, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(11, 0, Sig::LIFETIME as usize);
-    }
-
-    #[test]
-    pub fn test_large_dimension_sha() {
-        // Note: do not use these parameters, they are just for testing
-        type PRF = ShaPRF<24, 8>;
-        type TH = ShaTweak192192;
-
-        // use 256 chunks
-        type MH = ShaMessageHash<24, 8, 256, 1>;
-        const TARGET_SUM: usize = 128;
-        type IE = TargetSumEncoding<MH, TARGET_SUM>;
-        const LOG_LIFETIME: usize = 10;
-        type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
-
-        Sig::internal_consistency_check();
-
-        test_signature_scheme_correctness::<Sig>(2, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(19, 0, Sig::LIFETIME as usize);
-    }*/
-
     #[test]
     pub fn test_large_base_poseidon() {
         // Note: do not use these parameters, they are just for testing
