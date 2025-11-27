@@ -584,7 +584,7 @@ pub mod instantiations_poseidon_top_level;
 mod tests {
     use crate::{
         array::FieldArray,
-        inc_encoding::{basic_winternitz::WinternitzEncoding, target_sum::TargetSumEncoding},
+        inc_encoding::target_sum::TargetSumEncoding,
         signature::test_templates::test_signature_scheme_correctness,
         symmetric::{
             message_hash::{
@@ -604,32 +604,6 @@ mod tests {
     use ssz::{Decode, Encode};
 
     type TestTH = PoseidonTweakHash<5, 7, 2, 9, 155>;
-
-    #[test]
-    pub fn test_winternitz_poseidon() {
-        // Note: do not use these parameters, they are just for testing
-        type PRF = ShakePRFtoF<7, 5>;
-        type MH = PoseidonMessageHashW1;
-        const CHUNK_SIZE: usize = 1;
-        const NUM_CHUNKS_CHECKSUM: usize = 8;
-        const NUM_CHAINS: usize = MH::DIMENSION + NUM_CHUNKS_CHECKSUM;
-        type IE = WinternitzEncoding<MH, CHUNK_SIZE, NUM_CHUNKS_CHECKSUM>;
-        type TH = PoseidonTweakHash<5, 7, 2, 9, NUM_CHAINS>;
-        const LOG_LIFETIME: usize = 6;
-        type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
-
-        Sig::internal_consistency_check();
-
-        test_signature_scheme_correctness::<Sig>(2, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(19, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(0, 0, Sig::LIFETIME as usize);
-        test_signature_scheme_correctness::<Sig>(11, 0, Sig::LIFETIME as usize);
-
-        test_signature_scheme_correctness::<Sig>(12, 10, (1 << 5) - 10);
-        test_signature_scheme_correctness::<Sig>(19, 4, 20);
-        test_signature_scheme_correctness::<Sig>(16, 16, 4);
-        test_signature_scheme_correctness::<Sig>(11, 1, 29);
-    }
 
     #[test]
     pub fn test_target_sum_poseidon() {
