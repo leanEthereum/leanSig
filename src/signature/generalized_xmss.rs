@@ -605,25 +605,29 @@ mod tests {
 
     type TestTH = PoseidonTweakHash<5, 7, 2, 9, 155>;
 
+    fn compress_prf_output<const OUT_LEN: usize>(value: [F; 24]) -> FieldArray<OUT_LEN> {
+        assert!(
+            OUT_LEN <= 24,
+            "Poseidon compression output length must be <= 24"
+        );
+        let hash = crate::symmetric::tweak_hash::poseidon::poseidon_compress::<F, _, 24, OUT_LEN>(
+            &crate::poseidon2_24(),
+            value.as_slice(),
+        );
+        FieldArray(hash)
+    }
+
     // Compress a wide PRF output down to the four-field-element domain used by PoseidonTweakHash.
     impl From<[F; 24]> for FieldArray<4> {
         fn from(value: [F; 24]) -> Self {
-            let hash = crate::symmetric::tweak_hash::poseidon::poseidon_compress::<F, _, 24, 4>(
-                &crate::poseidon2_24(),
-                value.as_slice(),
-            );
-            FieldArray(hash)
+            compress_prf_output::<4>(value)
         }
     }
 
     // Compress a wide PRF output down to the eight-field-element domain used by PoseidonTweakHash.
     impl From<[F; 24]> for FieldArray<8> {
         fn from(value: [F; 24]) -> Self {
-            let hash = crate::symmetric::tweak_hash::poseidon::poseidon_compress::<F, _, 24, 8>(
-                &crate::poseidon2_24(),
-                value.as_slice(),
-            );
-            FieldArray(hash)
+            compress_prf_output::<8>(value)
         }
     }
 
