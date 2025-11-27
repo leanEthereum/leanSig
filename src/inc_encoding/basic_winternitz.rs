@@ -8,12 +8,16 @@ use super::IncomparableEncoding;
 /// Incomparable Encoding Scheme based on the basic Winternitz scheme, implemented from a given message hash.
 /// CHUNK_SIZE must be 1, 2, 4, or 8 and MH::BASE must be 2^CHUNK_SIZE.
 /// NUM_CHUNKS_CHECKSUM is the precomputed number of checksum chunks (see original Winternitz description).
-pub struct WinternitzEncoding<MH: MessageHash, const CHUNK_SIZE: usize, const NUM_CHUNKS_CHECKSUM: usize> {
+pub struct WinternitzEncoding<
+    MH: MessageHash,
+    const CHUNK_SIZE: usize,
+    const NUM_CHUNKS_CHECKSUM: usize,
+> {
     _marker_mh: std::marker::PhantomData<MH>,
 }
 
-impl<MH: MessageHash, const CHUNK_SIZE: usize, const NUM_CHUNKS_CHECKSUM: usize> IncomparableEncoding
-    for WinternitzEncoding<MH, CHUNK_SIZE, NUM_CHUNKS_CHECKSUM>
+impl<MH: MessageHash, const CHUNK_SIZE: usize, const NUM_CHUNKS_CHECKSUM: usize>
+    IncomparableEncoding for WinternitzEncoding<MH, CHUNK_SIZE, NUM_CHUNKS_CHECKSUM>
 {
     type Parameter = MH::Parameter;
 

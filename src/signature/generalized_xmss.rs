@@ -584,10 +584,7 @@ pub mod instantiations_poseidon_top_level;
 mod tests {
     use crate::{
         array::FieldArray,
-        inc_encoding::{
-            basic_winternitz::WinternitzEncoding,
-            target_sum::TargetSumEncoding,
-        },
+        inc_encoding::{basic_winternitz::WinternitzEncoding, target_sum::TargetSumEncoding},
         signature::test_templates::test_signature_scheme_correctness,
         symmetric::{
             message_hash::{
