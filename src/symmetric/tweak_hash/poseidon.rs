@@ -540,7 +540,7 @@ impl<
 
                 // Apply the sponge hash to produce the leaf.
                 // This absorbs all chain ends and squeezes out the final hash.
-                let packed_leaves = poseidon_sponge::<PackedF, _, _, _>(
+                let packed_leaves = poseidon_sponge::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
                     &sponge_perm,
                     &capacity_val,
                     &packed_leaf_input,
