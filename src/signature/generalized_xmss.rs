@@ -616,6 +616,17 @@ mod tests {
         }
     }
 
+    // Compress a wide PRF output down to the eight-field-element domain used by PoseidonTweakHash.
+    impl From<[F; 24]> for FieldArray<8> {
+        fn from(value: [F; 24]) -> Self {
+            let hash = crate::symmetric::tweak_hash::poseidon::poseidon_compress::<F, _, 24, 8>(
+                &crate::poseidon2_24(),
+                value.as_slice(),
+            );
+            FieldArray(hash)
+        }
+    }
+
     #[test]
     pub fn test_target_sum_poseidon() {
         // Note: do not use these parameters, they are just for testing
@@ -700,9 +711,9 @@ mod tests {
     #[test]
     pub fn test_large_dimension_poseidon() {
         // Note: do not use these parameters, they are just for testing
-        type PRF = ShakePRFtoF<8, 4>;
+        type PRF = ShakePRFtoF<24, 8>;
         type TH = PoseidonTweakHash<4, 8, 2, 8, 256>;
-        type MH = PoseidonMessageHash<4, 4, 8, 256, 2, 2, 9>;
+        type MH = PoseidonMessageHash<4, 8, 8, 256, 2, 2, 9>;
         const TARGET_SUM: usize = 128;
         type IE = TargetSumEncoding<MH, TARGET_SUM>;
         const LOG_LIFETIME: usize = 10;
