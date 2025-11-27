@@ -616,7 +616,7 @@ mod tests {
         const MAX_CHUNK_VALUE: usize = BASE - 1;
         const EXPECTED_SUM: usize = NUM_CHUNKS * MAX_CHUNK_VALUE / 2;
         type IE = TargetSumEncoding<MH, EXPECTED_SUM>;
-        const LOG_LIFETIME: usize = 6;
+        const LOG_LIFETIME: usize = 10;
         type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
         Sig::internal_consistency_check();
@@ -694,7 +694,7 @@ mod tests {
         type MH = PoseidonMessageHash<4, 8, 8, 256, 2, 2, 9>;
         const TARGET_SUM: usize = 128;
         type IE = TargetSumEncoding<MH, TARGET_SUM>;
-        const LOG_LIFETIME: usize = 6;
+        const LOG_LIFETIME: usize = 10;
         type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
         Sig::internal_consistency_check();
