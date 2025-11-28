@@ -1,8 +1,8 @@
 use rand::Rng;
-use serde::{Serialize, de::DeserializeOwned};
 use std::fmt::Debug;
 
 use crate::MESSAGE_LENGTH;
+use crate::serialization::Serializable;
 
 /// Trait to model incomparable encoding schemes.
 /// These schemes allow to encode a message into a codeword.
@@ -17,8 +17,8 @@ use crate::MESSAGE_LENGTH;
 /// x = (x_1,..,x_k) and x' = (x'_1,..,x'_k) we have
 /// x_i > x'_i for all i = 1,...,k.
 pub trait IncomparableEncoding {
-    type Parameter: Serialize + DeserializeOwned;
-    type Randomness: Serialize + DeserializeOwned;
+    type Parameter: Serializable;
+    type Randomness: Serializable;
     type Error: Debug;
 
     /// number of entries in a codeword

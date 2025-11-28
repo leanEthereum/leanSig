@@ -3,6 +3,7 @@ use ssz::{Decode, DecodeError, Encode};
 use std::ops::{Deref, DerefMut};
 
 use crate::F;
+use crate::serialization::Serializable;
 use p3_field::{PrimeCharacteristicRing, PrimeField32, RawDataSerializable};
 
 /// A wrapper around an array of field elements that implements SSZ Encode/Decode.
@@ -85,6 +86,8 @@ impl<const N: usize> Decode for FieldArray<N> {
         Ok(Self(arr))
     }
 }
+
+impl<const N: usize> Serializable for FieldArray<N> {}
 
 impl<const N: usize> Serialize for FieldArray<N> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

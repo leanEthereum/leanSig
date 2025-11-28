@@ -9,6 +9,7 @@ use super::poseidon::encode_epoch;
 use super::poseidon::encode_message;
 use crate::F;
 use crate::MESSAGE_LENGTH;
+use crate::array::FieldArray;
 use crate::hypercube::hypercube_find_layer;
 use crate::hypercube::hypercube_part_size;
 use crate::hypercube::map_to_vertex;
@@ -118,16 +119,16 @@ where
     [F; PARAMETER_LEN]: Serialize + DeserializeOwned,
     [F; RAND_LEN]: Serialize + DeserializeOwned,
 {
-    type Parameter = [F; PARAMETER_LEN];
+    type Parameter = FieldArray<PARAMETER_LEN>;
 
-    type Randomness = [F; RAND_LEN];
+    type Randomness = FieldArray<RAND_LEN>;
 
     const DIMENSION: usize = DIMENSION;
 
     const BASE: usize = BASE;
 
     fn rand<R: rand::Rng>(rng: &mut R) -> Self::Randomness {
-        rng.random()
+        FieldArray(rng.random())
     }
 
     fn apply(
@@ -256,7 +257,7 @@ mod tests {
 
         let mut rng = rand::rng();
 
-        let parameter = rng.random();
+        let parameter = FieldArray(rng.random());
 
         let message = rng.random();
 
@@ -294,7 +295,7 @@ mod tests {
 
             let mut rng = rand::rng();
 
-            let parameter = rng.random();
+            let parameter = FieldArray(rng.random());
             let randomness = MH::rand(&mut rng);
 
             let hash = MH::apply(&parameter, epoch, &randomness, &message);

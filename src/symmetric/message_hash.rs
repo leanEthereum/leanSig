@@ -1,7 +1,7 @@
 use rand::Rng;
-use serde::{Serialize, de::DeserializeOwned};
 
 use crate::MESSAGE_LENGTH;
+use crate::serialization::Serializable;
 
 /// Trait to model a hash function used for message hashing.
 ///
@@ -12,8 +12,8 @@ use crate::MESSAGE_LENGTH;
 ///
 /// Note that BASE must be at most 2^8, as we encode chunks as u8.
 pub trait MessageHash {
-    type Parameter: Clone + Sized + Serialize + DeserializeOwned;
-    type Randomness: Serialize + DeserializeOwned;
+    type Parameter: Clone + Serializable;
+    type Randomness: Serializable;
 
     /// number of entries in a hash
     const DIMENSION: usize;

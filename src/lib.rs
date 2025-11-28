@@ -17,6 +17,7 @@ pub(crate) type PackedF = <F as Field>::Packing;
 pub(crate) mod array;
 pub(crate) mod hypercube;
 pub(crate) mod inc_encoding;
+pub mod serialization;
 pub mod signature;
 pub(crate) mod simd_utils;
 pub(crate) mod symmetric;

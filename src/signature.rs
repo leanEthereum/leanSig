@@ -1,9 +1,8 @@
 use std::ops::Range;
 
 use crate::MESSAGE_LENGTH;
+use crate::serialization::Serializable;
 use rand::Rng;
-use serde::{Serialize, de::DeserializeOwned};
-use ssz::{Decode, Encode};
 use thiserror::Error;
 
 /// Error enum for the signing process.
@@ -99,17 +98,21 @@ pub trait SignatureScheme {
     /// The key must be serializable to allow for network transmission and storage.
     ///
     /// We must support SSZ encoding for Ethereum consensus layer compatibility.
-    type PublicKey: Serialize + DeserializeOwned + Encode + Decode;
+    type PublicKey: Serializable;
 
     /// The secret key used for signing.
     ///
     /// The key must be serializable for persistence and secure backup.
-    type SecretKey: SignatureSchemeSecretKey + Serialize + DeserializeOwned;
+    ///
+    /// We must support SSZ encoding for Ethereum consensus layer compatibility.
+    type SecretKey: SignatureSchemeSecretKey + Serializable;
 
     /// The signature object produced by the signing algorithm.
     ///
     /// The signature must be serializable to allow for network transmission and storage.
-    type Signature: Serialize + DeserializeOwned;
+    ///
+    /// We must support SSZ encoding for Ethereum consensus layer compatibility.
+    type Signature: Serializable;
 
     /// The maximum number of epochs supported by this signature scheme configuration,
     /// denoted as $L$ in the literature [DKKW25a, DKKW25b].
