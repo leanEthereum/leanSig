@@ -1,4 +1,5 @@
-use serde::{Deserialize, Deserializer, Serialize, de::Visitor, ser::SerializeTuple};
+use serde::de::{SeqAccess, Visitor};
+use serde::{Deserialize, Serialize};
 use ssz::{Decode, DecodeError, Encode};
 use std::ops::{Deref, DerefMut};
 
@@ -94,9 +95,10 @@ impl<const N: usize> Serialize for FieldArray<N> {
     where
         S: serde::Serializer,
     {
+        use serde::ser::SerializeTuple;
         let mut seq = serializer.serialize_tuple(N)?;
-        for element in self.0.iter().map(PrimeField32::as_canonical_u32) {
-            seq.serialize_element(&element)?;
+        for element in &self.0 {
+            seq.serialize_element(element)?;
         }
         seq.end()
     }
@@ -105,7 +107,7 @@ impl<const N: usize> Serialize for FieldArray<N> {
 impl<'de, const N: usize> Deserialize<'de> for FieldArray<N> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: Deserializer<'de>,
+        D: serde::Deserializer<'de>,
     {
         struct FieldArrayVisitor<const N: usize>;
 
@@ -118,14 +120,13 @@ impl<'de, const N: usize> Deserialize<'de> for FieldArray<N> {
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
             where
-                A: serde::de::SeqAccess<'de>,
+                A: SeqAccess<'de>,
             {
                 let mut arr = [F::ZERO; N];
-                for (i, p) in arr.iter_mut().enumerate() {
-                    let val: u32 = seq
+                for (i, elem) in arr.iter_mut().enumerate() {
+                    *elem = seq
                         .next_element()?
                         .ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
-                    *p = F::new(val);
                 }
                 Ok(FieldArray(arr))
             }
@@ -347,6 +348,41 @@ mod tests {
             prop_assert_eq!(encoded.len(), expected_size);
             prop_assert_eq!(field_array.ssz_bytes_len(), expected_size);
         }
+
+        #[test]
+        fn proptest_serde_roundtrip(
+            values in prop::collection::vec(0u32..F::ORDER_U32, LARGE_SIZE)
+        ) {
+            let arr: [F; LARGE_SIZE] = std::array::from_fn(|i| F::new(values[i]));
+            let original = FieldArray(arr);
+
+            let config = bincode::config::standard().with_fixed_int_encoding();
+            let encoded = bincode::serde::encode_to_vec(&original, config)
+                .expect("Failed to serialize");
+            let decoded: FieldArray<LARGE_SIZE> = bincode::serde::decode_from_slice(&encoded, config)
+                .expect("Failed to deserialize")
+                .0;
+
+            prop_assert_eq!(original, decoded);
+        }
+
+        #[test]
+        fn proptest_serde_deterministic(
+            values in prop::array::uniform5(0u32..F::ORDER_U32)
+        ) {
+            let arr = values.map(F::new);
+            let field_array = FieldArray(arr);
+
+            let config = bincode::config::standard().with_fixed_int_encoding();
+
+            // Encode twice and verify both encodings are identical
+            let encoding1 = bincode::serde::encode_to_vec(&field_array, config)
+                .expect("Failed to serialize");
+            let encoding2 = bincode::serde::encode_to_vec(&field_array, config)
+                .expect("Failed to serialize");
+
+            prop_assert_eq!(encoding1, encoding2);
+        }
     }
 
     #[test]
@@ -369,5 +405,60 @@ mod tests {
         let arr = FieldArray([F::new(1), F::new(2), F::new(3)]);
         let encoded = bincode::serde::encode_to_vec(arr, config).unwrap();
         assert_eq!(encoded.len(), arr.len() * F::NUM_BYTES);
+    }
+
+    #[test]
+    fn test_serde_uses_montgomery_form() {
+        // Create a field array with known values
+        let arr = FieldArray([F::new(1), F::new(2), F::new(3)]);
+
+        // Serialize using bincode
+        let config = bincode::config::standard().with_fixed_int_encoding();
+        let encoded = bincode::serde::encode_to_vec(&arr, config).unwrap();
+
+        // Extract the raw u32 values from the encoded bytes
+        let mut raw_values = Vec::new();
+        for i in 0..arr.len() {
+            let start = i * F::NUM_BYTES;
+            let chunk = &encoded[start..start + F::NUM_BYTES];
+            let value = u32::from_le_bytes(chunk.try_into().unwrap());
+            raw_values.push(value);
+        }
+
+        // Verify that the serialized values are in Montgomery form, not canonical form.
+        //
+        // - If they were in canonical form, we would see [1, 2, 3]
+        // - In Montgomery form, they should be different values
+        //
+        // We check this to confirm the serialization is using Montgomery form as in Plonky3.
+        //
+        // This is for consistency with other serializations including field elements over the codebase.
+        assert_ne!(
+            raw_values,
+            vec![1, 2, 3],
+            "Values should be in Montgomery form, not canonical form"
+        );
+
+        // Verify that when we access the internal value directly, it matches what was serialized
+        // This confirms we're serializing the Montgomery representation
+        for (i, &expected_monty) in raw_values.iter().enumerate() {
+            // Access the internal Montgomery value through unsafe (for testing only)
+            let actual_monty = unsafe {
+                // SAFETY: MontyField31 is repr(transparent) with a u32 value field
+                std::ptr::read(&arr[i] as *const F as *const u32)
+            };
+
+            assert_eq!(
+                actual_monty, expected_monty,
+                "Element {} should serialize its internal Montgomery form",
+                i
+            );
+        }
+
+        // Verify roundtrip works correctly
+        let decoded: FieldArray<3> = bincode::serde::decode_from_slice(&encoded, config)
+            .expect("Failed to deserialize")
+            .0;
+        assert_eq!(arr, decoded, "Roundtrip should preserve values");
     }
 }
