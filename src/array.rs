@@ -357,7 +357,7 @@ mod tests {
             let original = FieldArray(arr);
 
             let config = bincode::config::standard().with_fixed_int_encoding();
-            let encoded = bincode::serde::encode_to_vec(&original, config)
+            let encoded = bincode::serde::encode_to_vec(original, config)
                 .expect("Failed to serialize");
             let decoded: FieldArray<LARGE_SIZE> = bincode::serde::decode_from_slice(&encoded, config)
                 .expect("Failed to deserialize")
@@ -376,9 +376,9 @@ mod tests {
             let config = bincode::config::standard().with_fixed_int_encoding();
 
             // Encode twice and verify both encodings are identical
-            let encoding1 = bincode::serde::encode_to_vec(&field_array, config)
+            let encoding1 = bincode::serde::encode_to_vec(field_array, config)
                 .expect("Failed to serialize");
-            let encoding2 = bincode::serde::encode_to_vec(&field_array, config)
+            let encoding2 = bincode::serde::encode_to_vec(field_array, config)
                 .expect("Failed to serialize");
 
             prop_assert_eq!(encoding1, encoding2);
@@ -414,7 +414,7 @@ mod tests {
 
         // Serialize using bincode
         let config = bincode::config::standard().with_fixed_int_encoding();
-        let encoded = bincode::serde::encode_to_vec(&arr, config).unwrap();
+        let encoded = bincode::serde::encode_to_vec(arr, config).unwrap();
 
         // Extract the raw u32 values from the encoded bytes
         let mut raw_values = Vec::new();
@@ -445,7 +445,7 @@ mod tests {
             // Access the internal Montgomery value through unsafe (for testing only)
             let actual_monty = unsafe {
                 // SAFETY: MontyField31 is repr(transparent) with a u32 value field
-                std::ptr::read(&arr[i] as *const F as *const u32)
+                std::ptr::read((&raw const arr[i]).cast::<u32>())
             };
 
             assert_eq!(
