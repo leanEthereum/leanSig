@@ -16,7 +16,6 @@ pub trait Serializable: Serialize + DeserializeOwned + Encode + Decode + Sized {
     ///
     /// A `Vec<u8>` containing the canonical byte representation of this object.
     fn to_bytes(&self) -> Vec<u8> {
-        // TODO: Update this to not use SSZ internally.
         self.as_ssz_bytes()
     }
 
@@ -37,7 +36,6 @@ pub trait Serializable: Serialize + DeserializeOwned + Encode + Decode + Sized {
     /// - `Ok(Self)` if the bytes represent a valid object
     /// - `Err(DecodeError)` if the bytes are malformed or invalid
     fn from_bytes(bytes: &[u8]) -> Result<Self, DecodeError> {
-        // TODO: Update this to not use SSZ internally.
         Self::from_ssz_bytes(bytes)
     }
 }
