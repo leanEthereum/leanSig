@@ -983,7 +983,10 @@ mod tests {
         inc_encoding::target_sum::TargetSumEncoding,
         signature::test_templates::test_signature_scheme_correctness,
         symmetric::{
-            message_hash::{MessageHash, poseidon::PoseidonMessageHashW1},
+            message_hash::{
+                MessageHash,
+                poseidon::{PoseidonMessageHash, PoseidonMessageHashW1},
+            },
             prf::shake_to_field::ShakePRFtoF,
             tweak_hash::poseidon::PoseidonTweakW1L5,
         },
@@ -1062,14 +1065,12 @@ mod tests {
         assert_eq!(rho1, rho2);
     }
 
-    /*#[test]
-    pub fn test_large_base_sha() {
+    #[test]
+    pub fn test_large_base_poseidon() {
         // Note: do not use these parameters, they are just for testing
-        type PRF = ShaPRF<24, 8>;
-        type TH = ShaTweak192192;
-
-        // use chunk size 8
-        type MH = ShaMessageHash<24, 8, 32, 8>;
+        type PRF = ShakePRFtoF<4, 8>;
+        type TH = PoseidonTweakHash<4, 4, 2, 8, 32>;
+        type MH = PoseidonMessageHash<4, 8, 8, 32, 256, 2, 9>;
         const TARGET_SUM: usize = 1 << 12;
         type IE = TargetSumEncoding<MH, TARGET_SUM>;
         const LOG_LIFETIME: usize = 10;
@@ -1082,13 +1083,11 @@ mod tests {
     }
 
     #[test]
-    pub fn test_large_dimension_sha() {
+    pub fn test_large_dimension_poseidon() {
         // Note: do not use these parameters, they are just for testing
-        type PRF = ShaPRF<24, 8>;
-        type TH = ShaTweak192192;
-
-        // use 256 chunks
-        type MH = ShaMessageHash<24, 8, 256, 1>;
+        type PRF = ShakePRFtoF<8, 8>;
+        type TH = PoseidonTweakHash<4, 8, 2, 8, 256>;
+        type MH = PoseidonMessageHash<4, 8, 8, 256, 2, 2, 9>;
         const TARGET_SUM: usize = 128;
         type IE = TargetSumEncoding<MH, TARGET_SUM>;
         const LOG_LIFETIME: usize = 10;
@@ -1098,7 +1097,7 @@ mod tests {
 
         test_signature_scheme_correctness::<Sig>(2, 0, Sig::LIFETIME as usize);
         test_signature_scheme_correctness::<Sig>(19, 0, Sig::LIFETIME as usize);
-    }*/
+    }
 
     #[test]
     pub fn test_expand_activation_time() {
