@@ -638,9 +638,10 @@ mod tests {
     use num_bigint::BigUint;
     use rand::Rng;
 
-    use crate::symmetric::prf::shake_to_field::ShakePRFtoF;
-
     use super::*;
+    use crate::symmetric::prf::shake_to_field::ShakePRFtoF;
+    use p3_field::PrimeField32;
+    use proptest::prelude::*;
 
     #[test]
     fn test_apply_44() {
@@ -1191,6 +1192,99 @@ mod tests {
                 "Mismatch at epoch index {} (epoch {}): SIMD and naive implementations produced different results",
                 i, random_epochs[i]
             );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_apply_properties(
+            param_values in prop::collection::vec(0u32..F::ORDER_U32, 4),
+            msg_values in prop::collection::vec(0u32..F::ORDER_U32, 4),
+            epoch in any::<u32>(),
+            chain_index in any::<u8>(),
+            pos_in_chain in any::<u8>()
+        ) {
+            // build parameter and message from proptest values
+            let parameter = FieldArray(std::array::from_fn::<_, 4, _>(|i| F::new(param_values[i])));
+            let message = FieldArray(std::array::from_fn::<_, 4, _>(|i| F::new(msg_values[i])));
+
+            // create chain tweak
+            let tweak = PoseidonTweak44::chain_tweak(epoch, chain_index, pos_in_chain);
+
+            // call apply twice to check determinism
+            let result1 = PoseidonTweak44::apply(&parameter, &tweak, &[message]);
+            let result2 = PoseidonTweak44::apply(&parameter, &tweak, &[message]);
+
+            // check determinism
+            prop_assert_eq!(result1, result2);
+
+            // check output has correct length
+            prop_assert_eq!(result1.0.len(), 4);
+
+            // check different tweaks produce different results
+            let other_tweak = PoseidonTweak44::chain_tweak(
+                epoch.wrapping_add(1),
+                chain_index,
+                pos_in_chain,
+            );
+            let other_result = PoseidonTweak44::apply(&parameter, &other_tweak, &[message]);
+            prop_assert_ne!(result1, other_result);
+        }
+
+        #[test]
+        fn proptest_chain_tweak_encoding_properties(
+            epoch1 in any::<u32>(),
+            epoch2 in any::<u32>(),
+            chain_index in any::<u8>(),
+            pos_in_chain in any::<u8>()
+        ) {
+            // check encoding is deterministic
+            let tweak1 = PoseidonTweak::ChainTweak { epoch: epoch1, chain_index, pos_in_chain };
+            let result1 = tweak1.to_field_elements::<2>();
+            let result2 = tweak1.to_field_elements::<2>();
+            prop_assert_eq!(result1, result2);
+
+            // check output has correct length
+            prop_assert_eq!(result1.len(), 2);
+
+            // check different epochs produce different encodings
+            let tweak2 = PoseidonTweak::ChainTweak { epoch: epoch2, chain_index, pos_in_chain };
+            let other = tweak2.to_field_elements::<2>();
+            if epoch1 == epoch2 {
+                prop_assert_eq!(result1, other);
+            } else {
+                prop_assert_ne!(result1, other);
+            }
+
+            // check chain tweaks differ from tree tweaks (domain separation)
+            let tree_tweak = PoseidonTweak::TreeTweak { level: 0, pos_in_level: epoch1 };
+            let tree_result = tree_tweak.to_field_elements::<2>();
+            prop_assert_ne!(result1, tree_result);
+        }
+
+        #[test]
+        fn proptest_tree_tweak_encoding_properties(
+            level1 in any::<u8>(),
+            level2 in any::<u8>(),
+            pos_in_level in any::<u32>()
+        ) {
+            // check encoding is deterministic
+            let tweak1 = PoseidonTweak::TreeTweak { level: level1, pos_in_level };
+            let result1 = tweak1.to_field_elements::<2>();
+            let result2 = tweak1.to_field_elements::<2>();
+            prop_assert_eq!(result1, result2);
+
+            // check output has correct length
+            prop_assert_eq!(result1.len(), 2);
+
+            // check different levels produce different encodings
+            let tweak2 = PoseidonTweak::TreeTweak { level: level2, pos_in_level };
+            let other = tweak2.to_field_elements::<2>();
+            if level1 == level2 {
+                prop_assert_eq!(result1, other);
+            } else {
+                prop_assert_ne!(result1, other);
+            }
         }
     }
 }
