@@ -1557,8 +1557,8 @@ mod tests {
             let actual_start = start * C;
             let actual_end = end * C;
 
-            // check minimum duration of 2 bottom trees
-            prop_assert!(end - start >= 2 * C);
+            // check minimum duration of 2 bottom trees (each tree has C leaves)
+            prop_assert!(actual_end - actual_start >= 2 * C);
 
             // check result fits within lifetime
             prop_assert!(actual_end <= LIFETIME);
