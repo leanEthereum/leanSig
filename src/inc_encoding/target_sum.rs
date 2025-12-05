@@ -106,12 +106,51 @@ mod tests {
     }
 
     #[test]
-    fn test_successful_encoding_properties() {
-        // retry until we find a successful encoding to test Ok branch properties
+    fn test_successful_encoding_fixed_message() {
+        // keep message fixed and only resample randomness
+        // this mirrors the actual signature scheme behavior
+        let mut rng = rand::rng();
+        let parameter: FieldArray<4> = FieldArray(rng.random());
+        let message: [u8; 32] = rng.random();
+        let epoch = 0u32;
+
+        // retry with different randomness until encoding succeeds
+        for _ in 0..1_000 {
+            let randomness = TestTargetSumEncoding::rand(&mut rng);
+
+            if let Ok(chunks) =
+                TestTargetSumEncoding::encode(&parameter, &message, &randomness, epoch)
+            {
+                // check output has correct dimension
+                assert_eq!(chunks.len(), TestTargetSumEncoding::DIMENSION);
+
+                // check all chunks are in valid range [0, BASE-1]
+                for &chunk in &chunks {
+                    assert!((chunk as usize) < TestTargetSumEncoding::BASE);
+                }
+
+                // check sum equals target
+                let sum: usize = chunks.iter().map(|&x| x as usize).sum();
+                assert_eq!(sum, TEST_TARGET_SUM);
+
+                // check determinism: encoding again with same inputs produces same result
+                let result2 =
+                    TestTargetSumEncoding::encode(&parameter, &message, &randomness, epoch);
+                assert_eq!(chunks, result2.unwrap());
+
+                return;
+            }
+        }
+
+        panic!("failed to find successful encoding after 1000 attempts");
+    }
+
+    #[test]
+    fn test_successful_encoding_random_inputs() {
+        // retry with all random inputs until encoding succeeds
         let mut rng = rand::rng();
         let epoch = 0u32;
 
-        // retry with different inputs until encoding succeeds
         for _ in 0..1_000 {
             let parameter: FieldArray<4> = FieldArray(rng.random());
             let message: [u8; 32] = rng.random();
