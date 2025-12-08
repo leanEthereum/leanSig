@@ -232,6 +232,8 @@ pub type PoseidonMessageHashW1 = PoseidonMessageHash<5, 5, 5, 163, 2, 2, 9>;
 mod tests {
     use super::*;
     use num_traits::Zero;
+    use p3_field::PrimeField32;
+    use proptest::prelude::*;
     use rand::Rng;
     use std::collections::HashMap;
 
@@ -609,5 +611,101 @@ mod tests {
             expected_bigint, reconstructed_bigint,
             "Reconstructed bigint from chunks does not match bigint from field elements"
         );
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_apply_determinism_and_output_validity(
+            message in prop::array::uniform32(any::<u8>()),
+            param_values in prop::collection::vec(0u32..F::ORDER_U32, 4),
+            rand_values in prop::collection::vec(0u32..F::ORDER_U32, 4),
+            epoch in any::<u32>()
+        ) {
+            // build parameter and randomness from proptest values
+            let param_arr: [F; 4] = std::array::from_fn(|i| F::new(param_values[i]));
+            let parameter = FieldArray(param_arr);
+            let rand_arr: [F; 4] = std::array::from_fn(|i| F::new(rand_values[i]));
+            let randomness = FieldArray(rand_arr);
+
+            // call apply twice to check determinism
+            let result1 = PoseidonMessageHash445::apply(&parameter, epoch, &randomness, &message);
+            let result2 = PoseidonMessageHash445::apply(&parameter, epoch, &randomness, &message);
+
+            // check determinism
+            prop_assert_eq!(&result1, &result2);
+
+            // check output dimension
+            prop_assert_eq!(result1.len(), PoseidonMessageHash445::DIMENSION);
+
+            // check all chunks are in valid range [0, BASE-1]
+            for &chunk in &result1 {
+                prop_assert!((chunk as usize) < PoseidonMessageHash445::BASE);
+            }
+
+            // check different epochs produce different results
+            let other_epoch = PoseidonMessageHash445::apply(
+                &parameter,
+                epoch.wrapping_add(1),
+                &randomness,
+                &message,
+            );
+            prop_assert_ne!(&result1[..], &other_epoch[..]);
+        }
+
+        #[test]
+        fn proptest_encode_epoch_properties(
+            epoch1 in any::<u32>(),
+            epoch2 in any::<u32>()
+        ) {
+            // check encoding is deterministic
+            let result1 = encode_epoch::<4>(epoch1);
+            let result2 = encode_epoch::<4>(epoch1);
+            prop_assert_eq!(result1, result2);
+
+            // check output has correct length
+            prop_assert_eq!(result1.len(), 4);
+
+            // check different epochs produce different encodings
+            let other = encode_epoch::<4>(epoch2);
+            if epoch1 == epoch2 {
+                prop_assert_eq!(result1, other);
+            } else {
+                prop_assert_ne!(result1, other);
+            }
+
+            // check zero epoch produces encoding with separator only (first element non-zero)
+            if epoch1 == 0 {
+                // epoch=0 should still produce non-trivial encoding due to separator
+                let has_nonzero = result1.iter().any(|&x| x != F::ZERO);
+                prop_assert!(has_nonzero);
+            }
+        }
+
+        #[test]
+        fn proptest_encode_message_properties(
+            message1 in prop::array::uniform32(any::<u8>()),
+            message2 in prop::array::uniform32(any::<u8>())
+        ) {
+            // check encoding is deterministic
+            let result1 = encode_message::<9>(&message1);
+            let result2 = encode_message::<9>(&message1);
+            prop_assert_eq!(result1, result2);
+
+            // check output has correct length
+            prop_assert_eq!(result1.len(), 9);
+
+            // check different messages produce different encodings
+            let other = encode_message::<9>(&message2);
+            if message1 == message2 {
+                prop_assert_eq!(result1, other);
+            } else {
+                prop_assert_ne!(result1, other);
+            }
+
+            // check zero message produces zero encoding
+            let zero_msg = [0u8; 32];
+            let zero_result = encode_message::<9>(&zero_msg);
+            prop_assert!(zero_result.iter().all(|&x| x == F::ZERO));
+        }
     }
 }

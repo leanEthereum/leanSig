@@ -994,6 +994,10 @@ mod tests {
 
     use super::*;
 
+    use crate::array::FieldArray;
+    use p3_field::PrimeField32;
+    use proptest::prelude::*;
+
     use crate::{F, symmetric::tweak_hash::poseidon::PoseidonTweakHash};
     use p3_field::RawDataSerializable;
     use rand::rng;
@@ -1534,5 +1538,72 @@ mod tests {
         let sig2 = Sig::sign(&sk_decoded, epoch + 1, &message).unwrap();
         // Verify signature from decoded key validates
         assert!(Sig::verify(&pk, epoch + 1, &message, &sig2));
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_expand_activation_time_invariants(
+            desired_start in 0usize..256,
+            desired_duration in 1usize..256
+        ) {
+            const LOG_LIFETIME: usize = 8;
+            const C: usize = 1 << (LOG_LIFETIME / 2);
+            const LIFETIME: usize = 1 << LOG_LIFETIME;
+
+            let desired_end = (desired_start + desired_duration).min(LIFETIME);
+
+            let (start, end) = expand_activation_time::<LOG_LIFETIME>(desired_start, desired_duration);
+
+            let actual_start = start * C;
+            let actual_end = end * C;
+
+            // check minimum duration of 2 bottom trees (each tree has C leaves)
+            prop_assert!(actual_end - actual_start >= 2 * C);
+
+            // check result fits within lifetime
+            prop_assert!(actual_end <= LIFETIME);
+
+            // check result contains the desired interval
+            prop_assert!(actual_start <= desired_start);
+            prop_assert!(actual_end >= desired_end);
+
+            // check determinism by calling twice
+            let (start2, end2) = expand_activation_time::<LOG_LIFETIME>(desired_start, desired_duration);
+            prop_assert_eq!((start, end), (start2, end2));
+        }
+
+        #[test]
+        fn proptest_ssz_public_key_roundtrip_and_determinism(
+            root_values in prop::collection::vec(0u32..F::ORDER_U32, 7),
+            param_values in prop::collection::vec(0u32..F::ORDER_U32, 5)
+        ) {
+            // build public key from random field element values
+            let root_arr: [F; 7] = std::array::from_fn(|i| F::new(root_values[i]));
+            let param_arr: [F; 5] = std::array::from_fn(|i| F::new(param_values[i]));
+
+            let original = GeneralizedXMSSPublicKey::<TestTH> {
+                root: FieldArray(root_arr),
+                parameter: FieldArray(param_arr),
+            };
+
+            // encode to SSZ bytes
+            let encoded1 = original.as_ssz_bytes();
+            let encoded2 = original.as_ssz_bytes();
+
+            // check encoding is deterministic
+            prop_assert_eq!(&encoded1, &encoded2);
+
+            // check size matches expected (7 + 5 field elements * 4 bytes)
+            let expected_size = 12 * F::NUM_BYTES;
+            prop_assert_eq!(encoded1.len(), expected_size);
+            prop_assert_eq!(original.ssz_bytes_len(), expected_size);
+
+            // decode and check roundtrip preserves data
+            let decoded = GeneralizedXMSSPublicKey::<TestTH>::from_ssz_bytes(&encoded1)
+                .expect("valid SSZ bytes should decode");
+
+            prop_assert_eq!(original.root, decoded.root);
+            prop_assert_eq!(original.parameter, decoded.parameter);
+        }
     }
 }
