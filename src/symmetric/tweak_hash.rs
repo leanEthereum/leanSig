@@ -1,5 +1,7 @@
 use rand::Rng;
 
+use rayon::prelude::*;
+
 use crate::serialization::Serializable;
 use crate::symmetric::prf::Pseudorandom;
 
@@ -45,6 +47,30 @@ pub trait TweakableHash {
         tweak: &Self::Tweak,
         message: &[Self::Domain],
     ) -> Self::Domain;
+
+    /// Applies the calculation for a single tweak hash tree layer.
+    fn compute_tree_layer(
+        parameter: &Self::Parameter,
+        level: u8,
+        parent_start: usize,
+        children: &[Self::Domain],
+    ) -> Vec<Self::Domain> {
+        // default implementation is scalar. tweak_tree/poseidon.rs provides a SIMD variant
+        children
+            .par_chunks_exact(2)
+            .enumerate()
+            .map(|(i, children)| {
+                // Parent index in this layer
+                let parent_pos = (parent_start + i) as u32;
+                // Hash children into their parent using the tweak
+                Self::apply(
+                    parameter,
+                    &Self::tree_tweak((level as u8) + 1, parent_pos),
+                    children,
+                )
+            })
+            .collect()
+    }
 
     /// Computes bottom tree leaves by walking hash chains for multiple epochs.
     ///
