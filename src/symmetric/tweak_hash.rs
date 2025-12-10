@@ -65,7 +65,7 @@ pub trait TweakableHash {
                 // Hash children into their parent using the tweak
                 Self::apply(
                     parameter,
-                    &Self::tree_tweak((level as u8) + 1, parent_pos),
+                    &Self::tree_tweak(level + 1, parent_pos),
                     children,
                 )
             })

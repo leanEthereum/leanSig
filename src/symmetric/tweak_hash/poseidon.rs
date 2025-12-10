@@ -378,13 +378,12 @@ impl<
         children: &[Self::Domain],
     ) -> Vec<Self::Domain> {
         // SIMD implementation specifically for Poseidon
+        const WIDTH: usize = PackedF::WIDTH;
 
         // Broadcast the hash parameter to all SIMD lanes.
         // Each lane will use the same parameter
         let packed_parameter: [PackedF; PARAMETER_LEN] =
             array::from_fn(|i| PackedF::from(parameter[i]));
-
-        const WIDTH: usize = PackedF::WIDTH;
 
         // permutation to use for the compression. 24 as we merge two inputs
         let perm = poseidon2_24();

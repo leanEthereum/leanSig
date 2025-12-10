@@ -391,7 +391,7 @@ where
             //
             // We do exact chunks of two children, no remainder.
             let parents =
-                TH::compute_tree_layer(&parameter, level as u8 + 1, parent_start, &prev.nodes);
+                TH::compute_tree_layer(parameter, level as u8 + 1, parent_start, &prev.nodes);
 
             // Add the new layer with padding so next iteration also has even start and length
             layers.push(HashTreeLayer::padded(rng, parents, parent_start));
