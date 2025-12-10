@@ -2,7 +2,6 @@ use crate::serialization::Serializable;
 use crate::symmetric::tweak_hash::TweakableHash;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use ssz::{Decode, DecodeError, Encode};
 
@@ -391,21 +390,8 @@ where
             // Compute all parents in parallel, pairing children two-by-two
             //
             // We do exact chunks of two children, no remainder.
-            let parents = prev
-                .nodes
-                .par_chunks_exact(2)
-                .enumerate()
-                .map(|(i, children)| {
-                    // Parent index in this layer
-                    let parent_pos = (parent_start + i) as u32;
-                    // Hash children into their parent using the tweak
-                    TH::apply(
-                        parameter,
-                        &TH::tree_tweak((level as u8) + 1, parent_pos),
-                        children,
-                    )
-                })
-                .collect();
+            let parents =
+                TH::compute_tree_layer(parameter, level as u8 + 1, parent_start, &prev.nodes);
 
             // Add the new layer with padding so next iteration also has even start and length
             layers.push(HashTreeLayer::padded(rng, parents, parent_start));
