@@ -1264,4 +1264,53 @@ mod tests {
             }
         }
     }
+
+    proptest! {
+        #[test]
+        fn proptest_tree_tweak_is_injective(
+            level in any::<u8>(),
+            pos_in_level in any::<u32>()
+        ) {
+            let tweak = PoseidonTweak::TreeTweak { level, pos_in_level };
+            let encoded = tweak.to_field_elements();
+
+            // Inverse function: decode the field elements back to original parameters
+            let low_30_bits = encoded[0].as_canonical_u64() as u32;
+            let high_2_bits = encoded[1].as_canonical_u64() as u32;
+            let recovered_pos_in_level = low_30_bits | (high_2_bits << 30);
+            let third_elem = encoded[2].as_canonical_u64() as u32;
+            let recovered_level = (third_elem >> 8) as u8;
+            let recovered_separator = (third_elem & 0xFF) as u8;
+
+            // Verify we recovered the original values
+            prop_assert_eq!(recovered_pos_in_level, pos_in_level);
+            prop_assert_eq!(recovered_level, level);
+            prop_assert_eq!(recovered_separator, TWEAK_SEPARATOR_FOR_TREE_HASH);
+        }
+
+        #[test]
+        fn proptest_chain_tweak_is_injective(
+            epoch in any::<u32>(),
+            chain_index in any::<u8>(),
+            pos_in_chain in any::<u8>()
+        ) {
+            let tweak = PoseidonTweak::ChainTweak { epoch, chain_index, pos_in_chain };
+            let encoded = tweak.to_field_elements();
+
+            // Inverse function: decode the field elements back to original parameters
+            let low_30_bits = encoded[0].as_canonical_u64() as u32;
+            let high_2_bits = encoded[1].as_canonical_u64() as u32;
+            let recovered_epoch = low_30_bits | (high_2_bits << 30);
+            let third_elem = encoded[2].as_canonical_u64() as u32;
+            let recovered_chain_index = (third_elem >> 16) as u8;
+            let recovered_pos_in_chain = ((third_elem >> 8) & 0xFF) as u8;
+            let recovered_separator = (third_elem & 0xFF) as u8;
+
+            // Verify we recovered the original values
+            prop_assert_eq!(recovered_epoch, epoch);
+            prop_assert_eq!(recovered_chain_index, chain_index);
+            prop_assert_eq!(recovered_pos_in_chain, pos_in_chain);
+            prop_assert_eq!(recovered_separator, TWEAK_SEPARATOR_FOR_CHAIN_HASH);
+        }
+    }
 }
