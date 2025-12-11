@@ -230,9 +230,11 @@ mod test_templates {
         num_active_epochs: usize,
     ) {
         // The epoch must be in the activation interval
+        // Note that we need to do the second check as u64, as otherwise we get
+        // overflows when we have the full 2^32 lifetime as activation time
         assert!(
             activation_epoch as u32 <= epoch
-                && epoch < (activation_epoch + num_active_epochs) as u32,
+                && (epoch as u64) < (activation_epoch + num_active_epochs) as u64,
             "Did not even try signing, epoch {:?} outside of activation interval {:?},{:?}",
             epoch,
             activation_epoch,
