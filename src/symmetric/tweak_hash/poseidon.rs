@@ -21,6 +21,8 @@ const DOMAIN_PARAMETERS_LENGTH: usize = 4;
 const CHAIN_COMPRESSION_WIDTH: usize = 16;
 /// The state width for merging two hashes in a tree or for the sponge construction.
 const MERGE_COMPRESSION_WIDTH: usize = 24;
+/// Number of field elements used to represent the tweak.
+pub const TWEAK_LEN_FE: usize = 3;
 
 /// Enum to implement tweaks.
 pub enum PoseidonTweak {
@@ -36,35 +38,41 @@ pub enum PoseidonTweak {
 }
 
 impl PoseidonTweak {
-    fn to_field_elements<const TWEAK_LEN: usize>(&self) -> [F; TWEAK_LEN] {
-        // We first represent the entire tweak as one big integer
-        let mut acc = match self {
+    fn to_field_elements(&self) -> [F; TWEAK_LEN_FE] {
+        const _: () = assert!(
+            F::ORDER_U64 > 1 << 30,
+            "we need to store 30 bits in one field element"
+        );
+
+        match self {
             Self::TreeTweak {
                 level,
                 pos_in_level,
             } => {
-                ((*level as u128) << 40)
-                    | ((*pos_in_level as u128) << 8)
-                    | (TWEAK_SEPARATOR_FOR_TREE_HASH as u128)
+                // split pos_in_level (32 bits) into (30 bits, 2 bits)
+                [
+                    F::from_u32(pos_in_level & ((1 << 30) - 1)),
+                    F::from_u32(pos_in_level >> 30),
+                    F::from_u32(((*level as u32) << 8) | TWEAK_SEPARATOR_FOR_TREE_HASH as u32),
+                ]
             }
             Self::ChainTweak {
                 epoch,
                 chain_index,
                 pos_in_chain,
             } => {
-                ((*epoch as u128) << 24)
-                    | ((*chain_index as u128) << 16)
-                    | ((*pos_in_chain as u128) << 8)
-                    | (TWEAK_SEPARATOR_FOR_CHAIN_HASH as u128)
+                // split epoch (32 bits) into (30 bits, 2 bits)
+                [
+                    F::from_u32(epoch & ((1 << 30) - 1)),
+                    F::from_u32(epoch >> 30),
+                    F::from_u32(
+                        ((*chain_index as u32) << 16)
+                            | ((*pos_in_chain as u32) << 8)
+                            | (TWEAK_SEPARATOR_FOR_CHAIN_HASH as u32),
+                    ),
+                ]
             }
-        };
-
-        // Now we interpret this integer in base-p to get field elements
-        std::array::from_fn(|_| {
-            let digit = (acc % F::ORDER_U64 as u128) as u64;
-            acc /= F::ORDER_U64 as u128;
-            F::from_u64(digit)
-        })
+        }
     }
 }
 
@@ -251,7 +259,6 @@ where
 pub struct PoseidonTweakHash<
     const PARAMETER_LEN: usize,
     const HASH_LEN: usize,
-    const TWEAK_LEN: usize,
     const CAPACITY: usize,
     const NUM_CHUNKS: usize,
 >;
@@ -259,10 +266,9 @@ pub struct PoseidonTweakHash<
 impl<
     const PARAMETER_LEN: usize,
     const HASH_LEN: usize,
-    const TWEAK_LEN: usize,
     const CAPACITY: usize,
     const NUM_CHUNKS: usize,
-> TweakableHash for PoseidonTweakHash<PARAMETER_LEN, HASH_LEN, TWEAK_LEN, CAPACITY, NUM_CHUNKS>
+> TweakableHash for PoseidonTweakHash<PARAMETER_LEN, HASH_LEN, CAPACITY, NUM_CHUNKS>
 {
     type Parameter = FieldArray<PARAMETER_LEN>;
 
@@ -303,7 +309,7 @@ impl<
         // (2) hashing two siblings in the tree. We use compression mode.
         // (3) hashing a long vector of chain ends. We use sponge mode.
 
-        let tweak_fe = tweak.to_field_elements::<TWEAK_LEN>();
+        let tweak_fe = tweak.to_field_elements();
 
         match message {
             [single] => {
@@ -353,7 +359,7 @@ impl<
 
                 let lengths: [u32; DOMAIN_PARAMETERS_LENGTH] = [
                     PARAMETER_LEN as u32,
-                    TWEAK_LEN as u32,
+                    TWEAK_LEN_FE as u32,
                     NUM_CHUNKS as u32,
                     HASH_LEN as u32,
                 ];
@@ -420,7 +426,7 @@ impl<
         // This ensures different use cases produce different outputs.
         let lengths = [
             PARAMETER_LEN as u32,
-            TWEAK_LEN as u32,
+            TWEAK_LEN_FE as u32,
             NUM_CHUNKS as u32,
             HASH_LEN as u32,
         ];
@@ -477,10 +483,10 @@ impl<
 
                         // Generate tweaks for all epochs in this SIMD batch.
                         // Each lane gets a tweak specific to its epoch.
-                        let packed_tweak = array::from_fn::<_, TWEAK_LEN, _>(|t_idx| {
+                        let packed_tweak = array::from_fn::<_, TWEAK_LEN_FE, _>(|t_idx| {
                             PackedF::from_fn(|lane| {
                                 Self::chain_tweak(epoch_chunk[lane], chain_index as u8, pos)
-                                    .to_field_elements::<TWEAK_LEN>()[t_idx]
+                                    .to_field_elements()[t_idx]
                             })
                         });
 
@@ -495,9 +501,9 @@ impl<
                         current_pos += PARAMETER_LEN;
 
                         // Copy tweak into the input buffer.
-                        packed_input[current_pos..current_pos + TWEAK_LEN]
+                        packed_input[current_pos..current_pos + TWEAK_LEN_FE]
                             .copy_from_slice(&packed_tweak);
-                        current_pos += TWEAK_LEN;
+                        current_pos += TWEAK_LEN_FE;
 
                         // Copy current chain value into the input buffer.
                         packed_input[current_pos..current_pos + HASH_LEN]
@@ -522,9 +528,9 @@ impl<
 
                 // Generate tree tweaks for all epochs.
                 // Level 0 indicates this is a bottom-layer leaf in the tree.
-                let packed_tree_tweak = array::from_fn::<_, TWEAK_LEN, _>(|t_idx| {
+                let packed_tree_tweak = array::from_fn::<_, TWEAK_LEN_FE, _>(|t_idx| {
                     PackedF::from_fn(|lane| {
-                        Self::tree_tweak(0, epoch_chunk[lane]).to_field_elements::<TWEAK_LEN>()
+                        Self::tree_tweak(0, epoch_chunk[lane]).to_field_elements()
                             [t_idx]
                     })
                 });
@@ -594,11 +600,11 @@ impl<
             "Poseidon Tweak Chain Hash: Capacity must be less than 24"
         );
         assert!(
-            PARAMETER_LEN + TWEAK_LEN + HASH_LEN <= 16,
+            PARAMETER_LEN + TWEAK_LEN_FE + HASH_LEN <= 16,
             "Poseidon Tweak Chain Hash: Input lengths too large for Poseidon instance"
         );
         assert!(
-            PARAMETER_LEN + TWEAK_LEN + 2 * HASH_LEN <= 24,
+            PARAMETER_LEN + TWEAK_LEN_FE + 2 * HASH_LEN <= 24,
             "Poseidon Tweak Tree Hash: Input lengths too large for Poseidon instance"
         );
 
@@ -611,7 +617,7 @@ impl<
 
         let bits_for_tree_tweak = f64::from(32 + 8_u32);
         let bits_for_chain_tweak = f64::from(32 + 8 + 8 + 8_u32);
-        let tweak_fe_bits = bits_per_fe * f64::from(TWEAK_LEN as u32);
+        let tweak_fe_bits = bits_per_fe * f64::from(TWEAK_LEN_FE as u32);
         assert!(
             tweak_fe_bits >= bits_for_tree_tweak,
             "Poseidon Tweak Hash: not enough field elements to encode the tree tweak"
@@ -625,17 +631,16 @@ impl<
 
 // Example instantiations
 #[cfg(test)]
-pub type PoseidonTweak44 = PoseidonTweakHash<4, 4, 3, 9, 128>;
+pub type PoseidonTweak44 = PoseidonTweakHash<4, 4, 9, 128>;
 #[cfg(test)]
-pub type PoseidonTweak37 = PoseidonTweakHash<3, 7, 3, 9, 128>;
+pub type PoseidonTweak37 = PoseidonTweakHash<3, 7, 9, 128>;
 #[cfg(test)]
-pub type PoseidonTweakW1L5 = PoseidonTweakHash<5, 7, 2, 9, 163>;
+pub type PoseidonTweakW1L5 = PoseidonTweakHash<5, 7, 9, 163>;
 
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
-    use num_bigint::BigUint;
     use rand::Rng;
 
     use super::*;
@@ -745,19 +750,12 @@ mod tests {
         // Tweak
         let level = 1u8;
         let pos_in_level = 2u32;
-        let sep = TWEAK_SEPARATOR_FOR_TREE_HASH as u64;
-
-        // Compute tweak_bigint
-        let tweak_bigint: BigUint =
-            (BigUint::from(level) << 40) + (BigUint::from(pos_in_level) << 8) + sep;
-
-        // Use the field modulus
-        let p = BigUint::from(F::ORDER_U64);
 
         // Extract field elements in base-p
         let expected = [
-            F::from_u128((&tweak_bigint % &p).try_into().unwrap()),
-            F::from_u128(((&tweak_bigint / &p) % &p).try_into().unwrap()),
+            F::from_u32(2), // pos_in_level & ((1 << 30) - 1)
+            F::from_u32(0), // pos_in_level >> 30
+            F::from_u32((1u32 << 8) | TWEAK_SEPARATOR_FOR_TREE_HASH as u32), // (level << 8) | sep
         ];
 
         // Check actual output
@@ -765,7 +763,7 @@ mod tests {
             level,
             pos_in_level,
         };
-        let computed = tweak.to_field_elements::<2>();
+        let computed = tweak.to_field_elements();
         assert_eq!(computed, expected);
     }
 
@@ -775,21 +773,12 @@ mod tests {
         let epoch = 1u32;
         let chain_index = 2u8;
         let pos_in_chain = 3u8;
-        let sep = TWEAK_SEPARATOR_FOR_CHAIN_HASH as u64;
-
-        // Compute tweak_bigint = (epoch << 24) + (chain_index << 16) + (pos_in_chain << 8) + sep
-        let tweak_bigint: BigUint = (BigUint::from(epoch) << 24)
-            + (BigUint::from(chain_index) << 16)
-            + (BigUint::from(pos_in_chain) << 8)
-            + sep;
-
-        // Use the field modulus
-        let p = BigUint::from(F::ORDER_U64);
 
         // Extract field elements in base-p
         let expected = [
-            F::from_u128((&tweak_bigint % &p).try_into().unwrap()),
-            F::from_u128(((&tweak_bigint / &p) % &p).try_into().unwrap()),
+            F::from_u32(1), // epoch & ((1 << 30) - 1)
+            F::from_u32(0), // epoch >> 30
+            F::from_u32((2u32 << 16) | (3u32 << 8) | TWEAK_SEPARATOR_FOR_CHAIN_HASH as u32), // (chain_index << 16) | (pos_in_chain << 8) | sep
         ];
 
         // Check actual output
@@ -798,7 +787,7 @@ mod tests {
             chain_index,
             pos_in_chain,
         };
-        let computed = tweak.to_field_elements::<2>();
+        let computed = tweak.to_field_elements();
         assert_eq!(computed, expected);
     }
 
@@ -806,22 +795,18 @@ mod tests {
     fn test_tree_tweak_field_elements_max_values() {
         let level = u8::MAX;
         let pos_in_level = u32::MAX;
-        let sep = TWEAK_SEPARATOR_FOR_TREE_HASH as u64;
 
-        let tweak_bigint: BigUint =
-            (BigUint::from(level) << 40) + (BigUint::from(pos_in_level) << 8) + sep;
-
-        let p = BigUint::from(F::ORDER_U64);
         let expected = [
-            F::from_u128((&tweak_bigint % &p).try_into().unwrap()),
-            F::from_u128(((&tweak_bigint / &p) % &p).try_into().unwrap()),
+            F::from_u32((1 << 30) - 1), // pos_in_level & ((1 << 30) - 1)
+            F::from_u32(3),             // pos_in_level >> 30
+            F::from_u32((255u32 << 8) | TWEAK_SEPARATOR_FOR_TREE_HASH as u32), // (level << 8) | sep
         ];
 
         let tweak = PoseidonTweak::TreeTweak {
             level,
             pos_in_level,
         };
-        let computed = tweak.to_field_elements::<2>();
+        let computed = tweak.to_field_elements();
         assert_eq!(computed, expected);
     }
 
@@ -830,17 +815,10 @@ mod tests {
         let epoch = u32::MAX;
         let chain_index = u8::MAX;
         let pos_in_chain = u8::MAX;
-        let sep = TWEAK_SEPARATOR_FOR_CHAIN_HASH as u64;
-
-        let tweak_bigint: BigUint = (BigUint::from(epoch) << 24)
-            + (BigUint::from(chain_index) << 16)
-            + (BigUint::from(pos_in_chain) << 8)
-            + sep;
-
-        let p = BigUint::from(F::ORDER_U64);
         let expected = [
-            F::from_u128((&tweak_bigint % &p).try_into().unwrap()),
-            F::from_u128(((&tweak_bigint / &p) % &p).try_into().unwrap()),
+            F::from_u32((1 << 30) - 1), // epoch & ((1 << 30) - 1)
+            F::from_u32(3),             // epoch >> 30
+            F::from_u32((255u32 << 16) | (255u32 << 8) | TWEAK_SEPARATOR_FOR_CHAIN_HASH as u32), // (chain_index << 16) | (pos_in_chain << 8) | sep
         ];
 
         let tweak = PoseidonTweak::ChainTweak {
@@ -848,7 +826,7 @@ mod tests {
             chain_index,
             pos_in_chain,
         };
-        let computed = tweak.to_field_elements::<2>();
+        let computed = tweak.to_field_elements();
         assert_eq!(computed, expected);
     }
 
@@ -868,7 +846,7 @@ mod tests {
                 level,
                 pos_in_level,
             }
-            .to_field_elements::<2>();
+            .to_field_elements();
 
             if let Some((prev_level, prev_pos_in_level)) =
                 map.insert(tweak_encoding, (level, pos_in_level))
@@ -895,7 +873,7 @@ mod tests {
                 level,
                 pos_in_level,
             }
-            .to_field_elements::<2>();
+            .to_field_elements();
 
             if let Some(prev_pos_in_level) = map.insert(tweak_encoding, pos_in_level) {
                 assert_eq!(
@@ -915,7 +893,7 @@ mod tests {
                 level,
                 pos_in_level,
             }
-            .to_field_elements::<2>();
+            .to_field_elements();
 
             if let Some(prev_level) = map.insert(tweak_encoding, level) {
                 assert_eq!(
@@ -948,7 +926,7 @@ mod tests {
                 chain_index,
                 pos_in_chain,
             }
-            .to_field_elements::<2>();
+            .to_field_elements();
 
             if let Some(prev_input) = map.insert(tweak_encoding, input) {
                 assert_eq!(
@@ -972,7 +950,7 @@ mod tests {
                 chain_index,
                 pos_in_chain,
             }
-            .to_field_elements::<2>();
+            .to_field_elements();
 
             if let Some(prev_input) = map.insert(tweak_encoding, input) {
                 assert_eq!(
@@ -996,7 +974,7 @@ mod tests {
                 chain_index,
                 pos_in_chain,
             }
-            .to_field_elements::<2>();
+            .to_field_elements();
 
             if let Some(prev_input) = map.insert(tweak_encoding, input) {
                 assert_eq!(
@@ -1020,7 +998,7 @@ mod tests {
                 chain_index,
                 pos_in_chain,
             }
-            .to_field_elements::<2>();
+            .to_field_elements();
 
             if let Some(prev_input) = map.insert(tweak_encoding, input) {
                 assert_eq!(
@@ -1037,7 +1015,6 @@ mod tests {
         PRF: Pseudorandom,
         const PARAMETER_LEN: usize,
         const HASH_LEN: usize,
-        const TWEAK_LEN: usize,
         const CAPACITY: usize,
         const NUM_CHUNKS: usize,
     >(
@@ -1115,7 +1092,7 @@ mod tests {
             );
 
             // Compute using naive/scalar implementation
-            let naive_result = compute_tree_leaves_naive::<TestTH, TestPRF, 4, 4, 3, 9, 128>(
+            let naive_result = compute_tree_leaves_naive::<TestTH, TestPRF, 4, 4, 9, 128>(
                 &prf_key,
                 &parameter,
                 &epochs,
@@ -1170,7 +1147,7 @@ mod tests {
         );
 
         // Compute using naive/scalar implementation
-        let naive_result = compute_tree_leaves_naive::<TestTH, TestPRF, 4, 4, 3, 9, 128>(
+        let naive_result = compute_tree_leaves_naive::<TestTH, TestPRF, 4, 4, 9, 128>(
             &prf_key,
             &parameter,
             &random_epochs,
@@ -1240,16 +1217,16 @@ mod tests {
         ) {
             // check encoding is deterministic
             let tweak1 = PoseidonTweak::ChainTweak { epoch: epoch1, chain_index, pos_in_chain };
-            let result1 = tweak1.to_field_elements::<2>();
-            let result2 = tweak1.to_field_elements::<2>();
+            let result1 = tweak1.to_field_elements();
+            let result2 = tweak1.to_field_elements();
             prop_assert_eq!(result1, result2);
 
             // check output has correct length
-            prop_assert_eq!(result1.len(), 2);
+            prop_assert_eq!(result1.len(), TWEAK_LEN_FE);
 
             // check different epochs produce different encodings
             let tweak2 = PoseidonTweak::ChainTweak { epoch: epoch2, chain_index, pos_in_chain };
-            let other = tweak2.to_field_elements::<2>();
+            let other = tweak2.to_field_elements();
             if epoch1 == epoch2 {
                 prop_assert_eq!(result1, other);
             } else {
@@ -1258,7 +1235,7 @@ mod tests {
 
             // check chain tweaks differ from tree tweaks (domain separation)
             let tree_tweak = PoseidonTweak::TreeTweak { level: 0, pos_in_level: epoch1 };
-            let tree_result = tree_tweak.to_field_elements::<2>();
+            let tree_result = tree_tweak.to_field_elements();
             prop_assert_ne!(result1, tree_result);
         }
 
@@ -1270,16 +1247,16 @@ mod tests {
         ) {
             // check encoding is deterministic
             let tweak1 = PoseidonTweak::TreeTweak { level: level1, pos_in_level };
-            let result1 = tweak1.to_field_elements::<2>();
-            let result2 = tweak1.to_field_elements::<2>();
+            let result1 = tweak1.to_field_elements();
+            let result2 = tweak1.to_field_elements();
             prop_assert_eq!(result1, result2);
 
             // check output has correct length
-            prop_assert_eq!(result1.len(), 2);
+            prop_assert_eq!(result1.len(), TWEAK_LEN_FE);
 
             // check different levels produce different encodings
             let tweak2 = PoseidonTweak::TreeTweak { level: level2, pos_in_level };
-            let other = tweak2.to_field_elements::<2>();
+            let other = tweak2.to_field_elements();
             if level1 == level2 {
                 prop_assert_eq!(result1, other);
             } else {

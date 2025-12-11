@@ -1003,7 +1003,7 @@ mod tests {
     use rand::rng;
     use ssz::{Decode, Encode};
 
-    type TestTH = PoseidonTweakHash<5, 7, 2, 9, 155>;
+    type TestTH = PoseidonTweakHash<5, 7, 9, 155>;
 
     #[test]
     pub fn test_target_sum_poseidon() {
@@ -1073,7 +1073,7 @@ mod tests {
     pub fn test_large_base_poseidon() {
         // Note: do not use these parameters, they are just for testing
         type PRF = ShakePRFtoF<4, 8>;
-        type TH = PoseidonTweakHash<4, 4, 2, 8, 32>;
+        type TH = PoseidonTweakHash<4, 4, 8, 32>;
         type MH = PoseidonMessageHash<4, 8, 8, 32, 256, 2, 9>;
         const TARGET_SUM: usize = 1 << 12;
         type IE = TargetSumEncoding<MH, TARGET_SUM>;
@@ -1090,7 +1090,7 @@ mod tests {
     pub fn test_large_dimension_poseidon() {
         // Note: do not use these parameters, they are just for testing
         type PRF = ShakePRFtoF<8, 8>;
-        type TH = PoseidonTweakHash<4, 8, 2, 8, 256>;
+        type TH = PoseidonTweakHash<4, 8, 8, 256>;
         type MH = PoseidonMessageHash<4, 8, 8, 256, 2, 2, 9>;
         const TARGET_SUM: usize = 128;
         type IE = TargetSumEncoding<MH, TARGET_SUM>;
