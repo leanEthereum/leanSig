@@ -78,6 +78,7 @@ fn map_into_hypercube_part<
 /// - `POS_INVOCATIONS` must be at most 2^8.
 /// - `POS_OUTPUT_LEN_FE` must be equal to `POS_INVOCATIONS * POS_OUTPUT_LEN_PER_INV_FE`.
 /// - `BASE` must be at most 2^8.
+#[derive(Clone)]
 pub struct TopLevelPoseidonMessageHash<
     const POS_OUTPUT_LEN_PER_INV_FE: usize,
     const POS_INVOCATIONS: usize,

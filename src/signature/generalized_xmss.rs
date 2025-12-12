@@ -40,12 +40,12 @@ pub struct GeneralizedXMSSSignatureScheme<
 
 /// Signature for GeneralizedXMSSSignatureScheme
 /// It contains a Merkle authentication path, encoding randomness, and a list of hashes
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "")]
 pub struct GeneralizedXMSSSignature<IE: IncomparableEncoding, TH: TweakableHash> {
-    path: HashTreeOpening<TH>,
-    rho: IE::Randomness,
-    hashes: Vec<TH::Domain>,
+    pub path: HashTreeOpening<TH>,
+    pub rho: IE::Randomness,
+    pub hashes: Vec<TH::Domain>,
 }
 
 impl<IE: IncomparableEncoding, TH: TweakableHash> Encode for GeneralizedXMSSSignature<IE, TH> {
@@ -174,10 +174,10 @@ impl<IE: IncomparableEncoding, TH: TweakableHash> Decode for GeneralizedXMSSSign
 
 /// Public key for GeneralizedXMSSSignatureScheme
 /// It contains a Merkle root and a parameter for the tweakable hash
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct GeneralizedXMSSPublicKey<TH: TweakableHash> {
-    root: TH::Domain,
-    parameter: TH::Parameter,
+    pub root: TH::Domain,
+    pub parameter: TH::Parameter,
 }
 
 /// Secret key for GeneralizedXMSSSignatureScheme

@@ -251,7 +251,7 @@ impl<TH: TweakableHash> Decode for HashSubTree<TH> {
 }
 
 /// Opening in a hash-tree: a co-path, without the leaf
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "")]
 pub struct HashTreeOpening<TH: TweakableHash> {
     /// The co-path needed to verify

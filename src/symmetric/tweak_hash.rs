@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use rand::Rng;
 
 use crate::serialization::Serializable;
@@ -20,10 +22,10 @@ pub trait TweakableHash {
     type Parameter: Copy + Send + Sync + Serializable;
 
     /// Tweak type for domain separation
-    type Tweak;
+    type Tweak: Debug;
 
     /// Domain element type (defines output and input types to the hash)
-    type Domain: Copy + PartialEq + Send + Sync + Serializable;
+    type Domain: Copy + PartialEq + Send + Sync + Serializable + Debug;
 
     /// Generates a random public parameter.
     fn rand_parameter<R: Rng>(rng: &mut R) -> Self::Parameter;

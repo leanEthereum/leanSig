@@ -24,6 +24,7 @@ pub enum TargetSumError {
 ///     const MAX_CHUNK_VALUE: usize = MH::BASE - 1
 ///     const EXPECTED_SUM: usize = MH::DIMENSION * MAX_CHUNK_VALUE / 2
 /// ```
+#[derive(Clone)]
 pub struct TargetSumEncoding<MH: MessageHash, const TARGET_SUM: usize> {
     _marker_mh: std::marker::PhantomData<MH>,
 }
