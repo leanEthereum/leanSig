@@ -251,7 +251,7 @@ impl<TH: TweakableHash> Decode for HashSubTree<TH> {
 }
 
 /// Opening in a hash-tree: a co-path, without the leaf
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "")]
 pub struct HashTreeOpening<TH: TweakableHash> {
     /// The co-path needed to verify
@@ -562,6 +562,7 @@ where
 
 /// Function to compute a Merkle authentication path from a tree that is
 /// splitted into top tree and bottom trees.
+#[must_use]
 pub fn combined_path<TH: TweakableHash>(
     top_tree: &HashSubTree<TH>,
     bottom_tree: &HashSubTree<TH>,

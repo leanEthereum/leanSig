@@ -23,6 +23,7 @@ const CHAIN_COMPRESSION_WIDTH: usize = 16;
 const MERGE_COMPRESSION_WIDTH: usize = 24;
 
 /// Enum to implement tweaks.
+#[derive(Debug)]
 pub enum PoseidonTweak {
     TreeTweak {
         level: u8,
@@ -36,7 +37,7 @@ pub enum PoseidonTweak {
 }
 
 impl PoseidonTweak {
-    fn to_field_elements<const TWEAK_LEN: usize>(&self) -> [F; TWEAK_LEN] {
+    pub fn to_field_elements<const TWEAK_LEN: usize>(&self) -> [F; TWEAK_LEN] {
         // We first represent the entire tweak as one big integer
         let mut acc = match self {
             Self::TreeTweak {
@@ -248,6 +249,7 @@ where
 ///
 /// Note: HASH_LEN, TWEAK_LEN, CAPACITY, and PARAMETER_LEN must
 /// be given in the unit "number of field elements".
+#[derive(Clone)]
 pub struct PoseidonTweakHash<
     const PARAMETER_LEN: usize,
     const HASH_LEN: usize,
