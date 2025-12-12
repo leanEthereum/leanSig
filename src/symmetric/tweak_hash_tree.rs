@@ -562,6 +562,7 @@ where
 
 /// Function to compute a Merkle authentication path from a tree that is
 /// splitted into top tree and bottom trees.
+#[must_use]
 pub fn combined_path<TH: TweakableHash>(
     top_tree: &HashSubTree<TH>,
     bottom_tree: &HashSubTree<TH>,
