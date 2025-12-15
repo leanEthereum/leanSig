@@ -9,7 +9,7 @@ use crate::TWEAK_SEPARATOR_FOR_TREE_HASH;
 use crate::array::FieldArray;
 use crate::poseidon2_16;
 use crate::poseidon2_24;
-use crate::simd_utils::{pack_array, unpack_array};
+use crate::simd_utils::{pack_array, pack_even_into, pack_fn_into, pack_odd_into, unpack_array};
 use crate::symmetric::prf::Pseudorandom;
 use crate::symmetric::tweak_hash::chain;
 use crate::{F, PackedF};
@@ -377,78 +377,71 @@ impl<
         parent_start: usize,
         children: &[Self::Domain],
     ) -> Vec<Self::Domain> {
-        // SIMD implementation specifically for Poseidon
         const WIDTH: usize = PackedF::WIDTH;
 
-        // Broadcast the hash parameter to all SIMD lanes.
-        // Each lane will use the same parameter
-        let packed_parameter: [PackedF; PARAMETER_LEN] =
-            array::from_fn(|i| PackedF::from(parameter[i]));
+        // Pre-allocate output vector
+        let output_len = children.len() / 2;
+        let mut parents = vec![FieldArray([F::ZERO; HASH_LEN]); output_len];
 
-        // permutation to use for the compression. 24 as we merge two inputs
+        // Broadcast the hash parameter to all SIMD lanes (computed once)
+        let packed_parameter: [PackedF; PARAMETER_LEN] =
+            array::from_fn(|i| PackedF::from(parameter.0[i]));
+
+        // Permutation for merging two inputs (width-24)
         let perm = poseidon2_24();
 
-        // preallocate a vector that can hold the SIMD part as well as any possible scalar remainder
-        let mut parents = Vec::with_capacity(children.len() / 2);
-        parents.par_extend(children.par_chunks_exact(2 * WIDTH).enumerate().flat_map(
-            |(i, children)| {
-                let parent_pos = (parent_start + i * WIDTH) as u32;
-                let packed_tweak = array::from_fn::<_, TWEAK_LEN, _>(|t_idx| {
-                    PackedF::from_fn(|lane| {
-                        let parent_pos_per_lane = parent_pos + (lane as u32);
-                        Self::tree_tweak(level, parent_pos_per_lane)
-                            .to_field_elements::<TWEAK_LEN>()[t_idx]
-                    })
+        // Offsets for assembling packed_input: [parameter | tweak | left | right]
+        let tweak_offset = PARAMETER_LEN;
+        let left_offset = PARAMETER_LEN + TWEAK_LEN;
+        let right_offset = PARAMETER_LEN + TWEAK_LEN + HASH_LEN;
+
+        // Process SIMD batches with in-place mutation
+        parents
+            .par_chunks_exact_mut(WIDTH)
+            .zip(children.par_chunks_exact(2 * WIDTH))
+            .enumerate()
+            .for_each(|(chunk_idx, (parents_chunk, children_chunk))| {
+                let parent_pos = (parent_start + chunk_idx * WIDTH) as u32;
+
+                // Assemble packed input directly: [parameter | tweak | left | right]
+                let mut packed_input = [PackedF::ZERO; MERGE_COMPRESSION_WIDTH];
+
+                // Copy pre-packed parameter
+                packed_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
+
+                // Pack tweaks directly into destination
+                pack_fn_into::<TWEAK_LEN>(&mut packed_input, tweak_offset, |t_idx, lane| {
+                    Self::tree_tweak(level, parent_pos + lane as u32)
+                        .to_field_elements::<TWEAK_LEN>()[t_idx]
                 });
 
-                // Assemble the packed input for the hash function.
-                // Layout: [parameter | tweak | left | right]
-                let mut packed_input = [PackedF::ZERO; MERGE_COMPRESSION_WIDTH];
-                let mut current_pos = 0;
+                // Pack left children (even indices) directly into destination
+                pack_even_into(&mut packed_input, left_offset, children_chunk);
 
-                // Copy parameter into the input buffer.
-                packed_input[current_pos..current_pos + PARAMETER_LEN]
-                    .copy_from_slice(&packed_parameter);
-                current_pos += PARAMETER_LEN;
+                // Pack right children (odd indices) directly into destination
+                pack_odd_into(&mut packed_input, right_offset, children_chunk);
 
-                // Copy tweak into the input buffer.
-                packed_input[current_pos..current_pos + TWEAK_LEN].copy_from_slice(&packed_tweak);
-                current_pos += TWEAK_LEN;
-
-                // Copy the left child value into the input buffer.
-                let lefts: [FieldArray<HASH_LEN>; WIDTH] = array::from_fn(|k| children[2 * k]);
-                let packed_lefts = pack_array(&lefts);
-                packed_input[current_pos..current_pos + HASH_LEN].copy_from_slice(&packed_lefts);
-                current_pos += HASH_LEN;
-
-                // Copy the right child value into the input buffer.
-                let rights: [FieldArray<HASH_LEN>; WIDTH] = array::from_fn(|k| children[2 * k + 1]);
-                let packed_rights = pack_array(&rights);
-                packed_input[current_pos..current_pos + HASH_LEN].copy_from_slice(&packed_rights);
-
+                // Compress all WIDTH parent pairs simultaneously
                 let packed_parents =
                     poseidon_compress::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
                         &perm,
                         &packed_input,
                     );
 
-                // unpack the parents from SIMD to scalar output
-                let mut parents = [FieldArray([F::ZERO; HASH_LEN]); WIDTH];
-                unpack_array(&packed_parents, &mut parents);
+                // Unpack directly to output slice
+                unpack_array(&packed_parents, parents_chunk);
+            });
 
-                parents
-            },
-        ));
+        // Handle remainder (elements that don't fill a complete SIMD batch)
+        let remainder_start = (children.len() / (2 * WIDTH)) * WIDTH;
+        let children_remainder = &children[remainder_start * 2..];
+        let parents_remainder = &mut parents[remainder_start..];
 
-        // handle non WIDTH left over elements
-        let remainder = children.par_chunks_exact(2 * WIDTH).remainder();
-
-        // TODO: parallel iterator here likely not worth it?
-        let num_simd_parents = parents.len();
-        parents.par_extend(remainder.par_chunks_exact(2).enumerate().map(|(i, pair)| {
-            let pos = parent_start + num_simd_parents + i;
-            Self::apply(parameter, &Self::tree_tweak(level, pos as u32), pair)
-        }));
+        for (i, pair) in children_remainder.chunks_exact(2).enumerate() {
+            let pos = parent_start + remainder_start + i;
+            parents_remainder[i] =
+                Self::apply(parameter, &Self::tree_tweak(level, pos as u32), pair);
+        }
 
         parents
     }
@@ -548,6 +541,10 @@ impl<
                 // Cache strategy: process one chain at a time to maximize locality.
                 // All epochs for that chain stay in registers across iterations.
 
+                // Offsets for chain compression: [parameter | tweak | current_value]
+                let chain_tweak_offset = PARAMETER_LEN;
+                let chain_value_offset = PARAMETER_LEN + TWEAK_LEN;
+
                 for (chain_index, packed_chain) in
                     packed_chains.iter_mut().enumerate().take(num_chains)
                 {
@@ -557,32 +554,25 @@ impl<
                         // Current position in the chain.
                         let pos = (step + 1) as u8;
 
-                        // Generate tweaks for all epochs in this SIMD batch.
-                        // Each lane gets a tweak specific to its epoch.
-                        let packed_tweak = array::from_fn::<_, TWEAK_LEN, _>(|t_idx| {
-                            PackedF::from_fn(|lane| {
-                                Self::chain_tweak(epoch_chunk[lane], chain_index as u8, pos)
-                                    .to_field_elements::<TWEAK_LEN>()[t_idx]
-                            })
-                        });
-
                         // Assemble the packed input for the hash function.
                         // Layout: [parameter | tweak | current_value]
                         let mut packed_input = [PackedF::ZERO; CHAIN_COMPRESSION_WIDTH];
-                        let mut current_pos = 0;
 
-                        // Copy parameter into the input buffer.
-                        packed_input[current_pos..current_pos + PARAMETER_LEN]
-                            .copy_from_slice(&packed_parameter);
-                        current_pos += PARAMETER_LEN;
+                        // Copy pre-packed parameter
+                        packed_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
 
-                        // Copy tweak into the input buffer.
-                        packed_input[current_pos..current_pos + TWEAK_LEN]
-                            .copy_from_slice(&packed_tweak);
-                        current_pos += TWEAK_LEN;
+                        // Pack tweaks directly into destination
+                        pack_fn_into::<TWEAK_LEN>(
+                            &mut packed_input,
+                            chain_tweak_offset,
+                            |t_idx, lane| {
+                                Self::chain_tweak(epoch_chunk[lane], chain_index as u8, pos)
+                                    .to_field_elements::<TWEAK_LEN>()[t_idx]
+                            },
+                        );
 
-                        // Copy current chain value into the input buffer.
-                        packed_input[current_pos..current_pos + HASH_LEN]
+                        // Copy current chain value (already packed)
+                        packed_input[chain_value_offset..chain_value_offset + HASH_LEN]
                             .copy_from_slice(packed_chain);
 
                         // Apply the hash function to advance the chain.
@@ -602,23 +592,34 @@ impl<
                 //
                 // This uses the sponge construction for variable-length input.
 
-                // Generate tree tweaks for all epochs.
-                // Level 0 indicates this is a bottom-layer leaf in the tree.
-                let packed_tree_tweak = array::from_fn::<_, TWEAK_LEN, _>(|t_idx| {
-                    PackedF::from_fn(|lane| {
-                        Self::tree_tweak(0, epoch_chunk[lane]).to_field_elements::<TWEAK_LEN>()
-                            [t_idx]
-                    })
-                });
-
                 // Assemble the sponge input.
                 // Layout: [parameter | tree_tweak | all_chain_ends]
-                let packed_leaf_input: Vec<_> = packed_parameter
-                    .iter()
-                    .chain(packed_tree_tweak.iter())
-                    .chain(packed_chains.iter().flatten())
-                    .copied()
-                    .collect();
+                let sponge_tweak_offset = PARAMETER_LEN;
+                let sponge_chains_offset = PARAMETER_LEN + TWEAK_LEN;
+                let sponge_input_len = PARAMETER_LEN + TWEAK_LEN + NUM_CHUNKS * HASH_LEN;
+
+                let mut packed_leaf_input = vec![PackedF::ZERO; sponge_input_len];
+
+                // Copy pre-packed parameter
+                packed_leaf_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
+
+                // Pack tree tweaks directly (level 0 for bottom-layer leaves)
+                pack_fn_into::<TWEAK_LEN>(
+                    &mut packed_leaf_input,
+                    sponge_tweak_offset,
+                    |t_idx, lane| {
+                        Self::tree_tweak(0, epoch_chunk[lane]).to_field_elements::<TWEAK_LEN>()
+                            [t_idx]
+                    },
+                );
+
+                // Copy all chain ends (already packed)
+                for (c_idx, chain) in packed_chains.iter().enumerate() {
+                    packed_leaf_input
+                        [sponge_chains_offset + c_idx * HASH_LEN
+                            ..sponge_chains_offset + (c_idx + 1) * HASH_LEN]
+                        .copy_from_slice(chain);
+                }
 
                 // Apply the sponge hash to produce the leaf.
                 // This absorbs all chain ends and squeezes out the final hash.
