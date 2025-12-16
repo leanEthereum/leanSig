@@ -1371,8 +1371,6 @@ mod tests {
         }
     }
 
-    // ==================== compute_tree_layer tests ====================
-
     /// Scalar reference implementation for compute_tree_layer.
     /// Used to verify the SIMD implementation produces correct results.
     fn compute_tree_layer_scalar<TH: TweakableHash>(
