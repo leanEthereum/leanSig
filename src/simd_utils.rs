@@ -40,6 +40,7 @@ pub fn pack_array<const N: usize>(data: &[FieldArray<N>]) -> [PackedF; N] {
 #[inline]
 pub fn unpack_array<const N: usize>(packed_data: &[PackedF; N], output: &mut [FieldArray<N>]) {
     // Optimized for cache locality: iterate over output lanes first
+    #[allow(clippy::needless_range_loop)]
     for j in 0..PackedF::WIDTH {
         for i in 0..N {
             output[j].0[i] = packed_data[i].as_slice()[j];
