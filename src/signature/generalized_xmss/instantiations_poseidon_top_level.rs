@@ -86,7 +86,9 @@ pub mod lifetime_2_to_the_32 {
 
         use crate::{
             inc_encoding::target_sum::TargetSumEncoding,
-            signature::generalized_xmss::GeneralizedXMSSSignatureScheme,
+            signature::generalized_xmss::{
+                GeneralizedXMSSPublicKey, GeneralizedXMSSSignature, GeneralizedXMSSSignatureScheme,
+            },
             symmetric::{
                 message_hash::top_level_poseidon::TopLevelPoseidonMessageHash,
                 prf::shake_to_field::ShakePRFtoF, tweak_hash::poseidon::PoseidonTweakHash,
@@ -101,10 +103,10 @@ pub mod lifetime_2_to_the_32 {
         const TARGET_SUM: usize = 375;
 
         const PARAMETER_LEN: usize = 5;
-        const TWEAK_LEN_FE: usize = 2;
+        pub const TWEAK_LEN_FE: usize = 2;
         const MSG_LEN_FE: usize = 9;
-        const RAND_LEN_FE: usize = 7;
-        const HASH_LEN_FE: usize = 8;
+        pub const RAND_LEN_FE: usize = 7;
+        pub const HASH_LEN_FE: usize = 8;
 
         const CAPACITY: usize = 9;
 
@@ -112,7 +114,7 @@ pub mod lifetime_2_to_the_32 {
         const POS_INVOCATIONS: usize = 1;
         const POS_OUTPUT_LEN_FE: usize = POS_OUTPUT_LEN_PER_INV_FE * POS_INVOCATIONS;
 
-        type MH = TopLevelPoseidonMessageHash<
+        pub type MH = TopLevelPoseidonMessageHash<
             POS_OUTPUT_LEN_PER_INV_FE,
             POS_INVOCATIONS,
             POS_OUTPUT_LEN_FE,
@@ -130,6 +132,8 @@ pub mod lifetime_2_to_the_32 {
 
         pub type SIGTopLevelTargetSumLifetime32Dim64Base8 =
             GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
+        pub type PubKeyTopLevelTargetSumLifetime32Dim64Base8 = GeneralizedXMSSPublicKey<TH>;
+        pub type SigTopLevelTargetSumLifetime32Dim64Base8 = GeneralizedXMSSSignature<IE, TH>;
 
         #[cfg(test)]
         mod test {
