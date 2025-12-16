@@ -446,6 +446,7 @@ impl<
         parents
     }
 
+    #[allow(clippy::too_many_lines)]
     fn compute_tree_leaves<PRF>(
         prf_key: &PRF::Key,
         parameter: &Self::Parameter,
