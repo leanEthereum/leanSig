@@ -47,34 +47,6 @@ pub fn unpack_array<const N: usize>(packed_data: &[PackedF; N], output: &mut [Fi
     }
 }
 
-#[inline(always)]
-pub fn unpack_to_array<const N: usize>(
-    packed_data: [PackedF; N],
-) -> [FieldArray<N>; PackedF::WIDTH] {
-    array::from_fn(|j| FieldArray(array::from_fn(|i| packed_data[i].as_slice()[j])))
-}
-
-#[inline(always)]
-pub fn pack_column(col: [F; PackedF::WIDTH]) -> PackedF {
-    PackedF::from_fn(|i| col[i])
-}
-
-/// Pack contiguous FieldArrays directly into a destination slice at the given offset.
-///
-/// Packs `data[0..WIDTH]` into `dest[offset..offset+N]`.
-/// This avoids creating an intermediate `[PackedF; N]` array.
-///
-/// # Arguments
-/// * `dest` - Destination slice to pack into
-/// * `offset` - Starting index in `dest`
-/// * `data` - Source slice of FieldArrays (must have length >= WIDTH)
-#[inline(always)]
-pub fn pack_into<const N: usize>(dest: &mut [PackedF], offset: usize, data: &[FieldArray<N>]) {
-    for i in 0..N {
-        dest[offset + i] = PackedF::from_fn(|lane| data[lane][i]);
-    }
-}
-
 /// Pack even-indexed FieldArrays (stride 2) directly into destination.
 ///
 /// Packs `data[0], data[2], data[4], ...` into `dest[offset..offset+N]`.
@@ -176,24 +148,6 @@ mod tests {
     }
 
     #[test]
-    fn test_unpack_to_array() {
-        // Create packed data
-        let packed: [PackedF; 2] = [
-            PackedF::from_fn(|i| F::from_u64(i as u64)),
-            PackedF::from_fn(|i| F::from_u64((i + 100) as u64)),
-        ];
-
-        // Unpack using the new function
-        let output = unpack_to_array(packed);
-
-        // Verify
-        for (lane, arr) in output.iter().enumerate() {
-            assert_eq!(arr[0], F::from_u64(lane as u64));
-            assert_eq!(arr[1], F::from_u64((lane + 100) as u64));
-        }
-    }
-
-    #[test]
     fn test_pack_preserves_element_order() {
         // Create data where each array has sequential values
         let data: [FieldArray<3>; PackedF::WIDTH] = array::from_fn(|i| {
@@ -257,50 +211,6 @@ mod tests {
 
             // Verify roundtrip
             prop_assert_eq!(original, unpacked);
-        }
-
-        #[test]
-        fn proptest_unpack_to_array_matches_unpack_array(
-            _seed in any::<u64>()
-        ) {
-            let mut rng = rand::rng();
-
-            // Generate random packed data
-            let packed: [PackedF; 8] = array::from_fn(|_| {
-                PackedF::from_fn(|_| rng.random())
-            });
-
-            // Unpack using both methods
-            let mut output1 = [FieldArray([F::ZERO; 8]); PackedF::WIDTH];
-            unpack_array(&packed, &mut output1);
-            let output2 = unpack_to_array(packed);
-
-            // Verify they match
-            prop_assert_eq!(output1, output2);
-        }
-
-        #[test]
-        fn proptest_pack_into_matches_pack_array(
-            _seed in any::<u64>()
-        ) {
-            let mut rng = rand::rng();
-
-            // Generate random data
-            let data: [FieldArray<7>; PackedF::WIDTH] = array::from_fn(|_| {
-                FieldArray(array::from_fn(|_| rng.random()))
-            });
-
-            // Pack using pack_array
-            let expected = pack_array(&data);
-
-            // Pack using pack_into
-            let mut dest = [PackedF::ZERO; 10];
-            pack_into(&mut dest, 2, &data);
-
-            // Verify they match at the offset
-            for i in 0..7 {
-                prop_assert_eq!(dest[2 + i], expected[i]);
-            }
         }
 
         #[test]
