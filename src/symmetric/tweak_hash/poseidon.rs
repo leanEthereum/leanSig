@@ -615,11 +615,9 @@ impl<
                 );
 
                 // Copy all chain ends (already packed)
-                for (c_idx, chain) in packed_chains.iter().enumerate() {
-                    packed_leaf_input
-                        [sponge_chains_offset + c_idx * HASH_LEN
-                            ..sponge_chains_offset + (c_idx + 1) * HASH_LEN]
-                        .copy_from_slice(chain);
+                let dst = &mut packed_leaf_input[sponge_chains_offset .. sponge_chains_offset + packed_chains.len() * HASH_LEN];
+                for (dst_chunk, src_chain) in dst.chunks_exact_mut(HASH_LEN).zip(packed_chains.iter()) {
+                    dst_chunk.copy_from_slice(src_chain);
                 }
 
                 // Apply the sponge hash to produce the leaf.
