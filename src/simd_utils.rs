@@ -37,6 +37,22 @@ pub fn pack_array<const N: usize>(data: &[FieldArray<N>]) -> [PackedF; N] {
 ///
 /// This is the inverse operation of `pack_array`. The output buffer must be preallocated
 /// with size `[WIDTH]` where `WIDTH = PackedF::WIDTH`, and each element is a `FieldArray<N>`.
+///
+/// Input layout (vertical): each PackedF holds one element from each array
+/// ```text
+/// packed_data[0] = PackedF([a0, b0, c0, ...])
+/// packed_data[1] = PackedF([a1, b1, c1, ...])
+/// packed_data[2] = PackedF([a2, b2, c2, ...])
+/// ...
+/// ```
+///
+/// Output layout (horizontal): each FieldArray is one complete array
+/// ```text
+/// output[0] = FieldArray([a0, a1, a2, ..., aN])
+/// output[1] = FieldArray([b0, b1, b2, ..., bN])
+/// output[2] = FieldArray([c0, c1, c2, ..., cN])
+/// ...
+/// ```
 #[inline]
 pub fn unpack_array<const N: usize>(packed_data: &[PackedF; N], output: &mut [FieldArray<N>]) {
     // Optimized for cache locality: iterate over output lanes first
