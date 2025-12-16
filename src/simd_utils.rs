@@ -26,7 +26,7 @@ use crate::{F, PackedF, array::FieldArray};
 ///
 /// This vertical packing enables efficient SIMD operations where a single instruction
 /// processes the same element position across multiple arrays simultaneously.
-#[inline(always)]
+#[inline]
 pub fn pack_array<const N: usize>(data: &[FieldArray<N>]) -> [PackedF; N] {
     array::from_fn(|i| PackedF::from_fn(|j| data[j][i]))
 }
@@ -37,7 +37,7 @@ pub fn pack_array<const N: usize>(data: &[FieldArray<N>]) -> [PackedF; N] {
 ///
 /// This is the inverse operation of `pack_array`. The output buffer must be preallocated
 /// with size `[WIDTH]` where `WIDTH = PackedF::WIDTH`, and each element is a `FieldArray<N>`.
-#[inline(always)]
+#[inline]
 pub fn unpack_array<const N: usize>(packed_data: &[PackedF; N], output: &mut [FieldArray<N>]) {
     // Optimized for cache locality: iterate over output lanes first
     for j in 0..PackedF::WIDTH {
@@ -84,7 +84,7 @@ pub fn pack_into<const N: usize>(dest: &mut [PackedF], offset: usize, data: &[Fi
 /// * `dest` - Destination slice to pack into
 /// * `offset` - Starting index in `dest`
 /// * `data` - Source slice of interleaved pairs (must have length >= 2 * WIDTH)
-#[inline(always)]
+#[inline]
 pub fn pack_even_into<const N: usize>(dest: &mut [PackedF], offset: usize, data: &[FieldArray<N>]) {
     for i in 0..N {
         dest[offset + i] = PackedF::from_fn(|lane| data[2 * lane][i]);
@@ -100,7 +100,7 @@ pub fn pack_even_into<const N: usize>(dest: &mut [PackedF], offset: usize, data:
 /// * `dest` - Destination slice to pack into
 /// * `offset` - Starting index in `dest`
 /// * `data` - Source slice of interleaved pairs (must have length >= 2 * WIDTH)
-#[inline(always)]
+#[inline]
 pub fn pack_odd_into<const N: usize>(dest: &mut [PackedF], offset: usize, data: &[FieldArray<N>]) {
     for i in 0..N {
         dest[offset + i] = PackedF::from_fn(|lane| data[2 * lane + 1][i]);
@@ -116,7 +116,7 @@ pub fn pack_odd_into<const N: usize>(dest: &mut [PackedF], offset: usize, data: 
 /// * `dest` - Destination slice to pack into
 /// * `offset` - Starting index in `dest`
 /// * `f` - Function that takes (element_index, lane_index) and returns a field element
-#[inline(always)]
+#[inline]
 pub fn pack_fn_into<const N: usize>(
     dest: &mut [PackedF],
     offset: usize,
