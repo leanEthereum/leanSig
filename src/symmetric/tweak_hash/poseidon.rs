@@ -9,7 +9,7 @@ use crate::TWEAK_SEPARATOR_FOR_TREE_HASH;
 use crate::array::FieldArray;
 use crate::poseidon2_16;
 use crate::poseidon2_24;
-use crate::simd_utils::{pack_array, unpack_array};
+use crate::simd_utils::{pack_array, pack_even_into, pack_fn_into, pack_odd_into, unpack_array};
 use crate::symmetric::prf::Pseudorandom;
 use crate::symmetric::tweak_hash::chain;
 use crate::{F, PackedF};
@@ -373,6 +373,86 @@ impl<
         }
     }
 
+    /// SIMD-accelerated computation of one Merkle tree layer.
+    ///
+    /// Processes `PackedF::WIDTH` parent pairs simultaneously using SIMD instructions,
+    /// with a scalar fallback for any remainder elements.
+    fn compute_tree_layer(
+        parameter: &Self::Parameter,
+        level: u8,
+        parent_start: usize,
+        children: &[Self::Domain],
+    ) -> Vec<Self::Domain> {
+        const WIDTH: usize = PackedF::WIDTH;
+
+        // Pre-allocate output vector
+        let output_len = children.len() / 2;
+        let mut parents = vec![FieldArray([F::ZERO; HASH_LEN]); output_len];
+
+        // Broadcast the hash parameter to all SIMD lanes (computed once)
+        let packed_parameter: [PackedF; PARAMETER_LEN] =
+            array::from_fn(|i| PackedF::from(parameter.0[i]));
+
+        // Permutation for merging two inputs (width-24)
+        let perm = poseidon2_24();
+
+        // Offsets for assembling packed_input: [parameter | tweak | left | right]
+        let tweak_offset = PARAMETER_LEN;
+        let left_offset = PARAMETER_LEN + TWEAK_LEN;
+        let right_offset = PARAMETER_LEN + TWEAK_LEN + HASH_LEN;
+
+        // Process SIMD batches with in-place mutation
+        parents
+            .par_chunks_exact_mut(WIDTH)
+            .zip(children.par_chunks_exact(2 * WIDTH))
+            .enumerate()
+            .for_each(|(chunk_idx, (parents_chunk, children_chunk))| {
+                let parent_pos = (parent_start + chunk_idx * WIDTH) as u32;
+
+                // Assemble packed input directly: [parameter | tweak | left | right]
+                let mut packed_input = [PackedF::ZERO; MERGE_COMPRESSION_WIDTH];
+
+                // Copy pre-packed parameter
+                packed_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
+
+                // Pack tweaks directly into destination
+                pack_fn_into::<TWEAK_LEN>(&mut packed_input, tweak_offset, |t_idx, lane| {
+                    Self::tree_tweak(level, parent_pos + lane as u32)
+                        .to_field_elements::<TWEAK_LEN>()[t_idx]
+                });
+
+                // Pack left children (even indices) directly into destination
+                pack_even_into(&mut packed_input, left_offset, children_chunk);
+
+                // Pack right children (odd indices) directly into destination
+                pack_odd_into(&mut packed_input, right_offset, children_chunk);
+
+                // Compress all WIDTH parent pairs simultaneously
+                let packed_parents =
+                    poseidon_compress::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
+                        &perm,
+                        &packed_input,
+                    );
+
+                // Unpack directly to output slice
+                unpack_array(&packed_parents, parents_chunk);
+            });
+
+        // Handle remainder (elements that don't fill a complete SIMD batch)
+        let remainder_start = (children.len() / (2 * WIDTH)) * WIDTH;
+        let children_remainder = &children[remainder_start * 2..];
+        let parents_remainder = &mut parents[remainder_start..];
+
+        for (i, pair) in children_remainder.chunks_exact(2).enumerate() {
+            let pos = parent_start + remainder_start + i;
+            parents_remainder[i] =
+                Self::apply(parameter, &Self::tree_tweak(level, pos as u32), pair);
+        }
+
+        parents
+    }
+
+    #[allow(clippy::too_many_lines)]
     fn compute_tree_leaves<PRF>(
         prf_key: &PRF::Key,
         parameter: &Self::Parameter,
@@ -468,6 +548,10 @@ impl<
                 // Cache strategy: process one chain at a time to maximize locality.
                 // All epochs for that chain stay in registers across iterations.
 
+                // Offsets for chain compression: [parameter | tweak | current_value]
+                let chain_tweak_offset = PARAMETER_LEN;
+                let chain_value_offset = PARAMETER_LEN + TWEAK_LEN;
+
                 for (chain_index, packed_chain) in
                     packed_chains.iter_mut().enumerate().take(num_chains)
                 {
@@ -477,32 +561,25 @@ impl<
                         // Current position in the chain.
                         let pos = (step + 1) as u8;
 
-                        // Generate tweaks for all epochs in this SIMD batch.
-                        // Each lane gets a tweak specific to its epoch.
-                        let packed_tweak = array::from_fn::<_, TWEAK_LEN, _>(|t_idx| {
-                            PackedF::from_fn(|lane| {
-                                Self::chain_tweak(epoch_chunk[lane], chain_index as u8, pos)
-                                    .to_field_elements::<TWEAK_LEN>()[t_idx]
-                            })
-                        });
-
                         // Assemble the packed input for the hash function.
                         // Layout: [parameter | tweak | current_value]
                         let mut packed_input = [PackedF::ZERO; CHAIN_COMPRESSION_WIDTH];
-                        let mut current_pos = 0;
 
-                        // Copy parameter into the input buffer.
-                        packed_input[current_pos..current_pos + PARAMETER_LEN]
-                            .copy_from_slice(&packed_parameter);
-                        current_pos += PARAMETER_LEN;
+                        // Copy pre-packed parameter
+                        packed_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
 
-                        // Copy tweak into the input buffer.
-                        packed_input[current_pos..current_pos + TWEAK_LEN]
-                            .copy_from_slice(&packed_tweak);
-                        current_pos += TWEAK_LEN;
+                        // Pack tweaks directly into destination
+                        pack_fn_into::<TWEAK_LEN>(
+                            &mut packed_input,
+                            chain_tweak_offset,
+                            |t_idx, lane| {
+                                Self::chain_tweak(epoch_chunk[lane], chain_index as u8, pos)
+                                    .to_field_elements::<TWEAK_LEN>()[t_idx]
+                            },
+                        );
 
-                        // Copy current chain value into the input buffer.
-                        packed_input[current_pos..current_pos + HASH_LEN]
+                        // Copy current chain value (already packed)
+                        packed_input[chain_value_offset..chain_value_offset + HASH_LEN]
                             .copy_from_slice(packed_chain);
 
                         // Apply the hash function to advance the chain.
@@ -522,23 +599,32 @@ impl<
                 //
                 // This uses the sponge construction for variable-length input.
 
-                // Generate tree tweaks for all epochs.
-                // Level 0 indicates this is a bottom-layer leaf in the tree.
-                let packed_tree_tweak = array::from_fn::<_, TWEAK_LEN, _>(|t_idx| {
-                    PackedF::from_fn(|lane| {
-                        Self::tree_tweak(0, epoch_chunk[lane]).to_field_elements::<TWEAK_LEN>()
-                            [t_idx]
-                    })
-                });
-
                 // Assemble the sponge input.
                 // Layout: [parameter | tree_tweak | all_chain_ends]
-                let packed_leaf_input: Vec<_> = packed_parameter
-                    .iter()
-                    .chain(packed_tree_tweak.iter())
-                    .chain(packed_chains.iter().flatten())
-                    .copied()
-                    .collect();
+                let sponge_tweak_offset = PARAMETER_LEN;
+                let sponge_chains_offset = PARAMETER_LEN + TWEAK_LEN;
+                let sponge_input_len = PARAMETER_LEN + TWEAK_LEN + NUM_CHUNKS * HASH_LEN;
+
+                let mut packed_leaf_input = vec![PackedF::ZERO; sponge_input_len];
+
+                // Copy pre-packed parameter
+                packed_leaf_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
+
+                // Pack tree tweaks directly (level 0 for bottom-layer leaves)
+                pack_fn_into::<TWEAK_LEN>(
+                    &mut packed_leaf_input,
+                    sponge_tweak_offset,
+                    |t_idx, lane| {
+                        Self::tree_tweak(0, epoch_chunk[lane]).to_field_elements::<TWEAK_LEN>()
+                            [t_idx]
+                    },
+                );
+
+                // Copy all chain ends (already packed)
+                let dst = &mut packed_leaf_input[sponge_chains_offset .. sponge_chains_offset + packed_chains.len() * HASH_LEN];
+                for (dst_chunk, src_chain) in dst.chunks_exact_mut(HASH_LEN).zip(packed_chains.iter()) {
+                    dst_chunk.copy_from_slice(src_chain);
+                }
 
                 // Apply the sponge hash to produce the leaf.
                 // This absorbs all chain ends and squeezes out the final hash.
@@ -1287,6 +1373,318 @@ mod tests {
             } else {
                 prop_assert_ne!(result1, other);
             }
+        }
+    }
+
+    /// Scalar reference implementation for compute_tree_layer.
+    /// Used to verify the SIMD implementation produces correct results.
+    fn compute_tree_layer_scalar<TH: TweakableHash>(
+        parameter: &TH::Parameter,
+        level: u8,
+        parent_start: usize,
+        children: &[TH::Domain],
+    ) -> Vec<TH::Domain> {
+        children
+            .chunks_exact(2)
+            .enumerate()
+            .map(|(i, pair)| {
+                TH::apply(
+                    parameter,
+                    &TH::tree_tweak(level, (parent_start + i) as u32),
+                    pair,
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_compute_tree_layer_matches_scalar() {
+        let mut rng = rand::rng();
+        let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+
+        // Test with 16 children (8 pairs)
+        let children: Vec<_> = (0..16)
+            .map(|_| PoseidonTweak44::rand_domain(&mut rng))
+            .collect();
+
+        let level = 1u8;
+        let parent_start = 0usize;
+
+        let simd_result =
+            PoseidonTweak44::compute_tree_layer(&parameter, level, parent_start, &children);
+        let scalar_result = compute_tree_layer_scalar::<PoseidonTweak44>(
+            &parameter,
+            level,
+            parent_start,
+            &children,
+        );
+
+        assert_eq!(simd_result.len(), scalar_result.len());
+        assert_eq!(simd_result, scalar_result);
+    }
+
+    #[test]
+    fn test_compute_tree_layer_output_length() {
+        let mut rng = rand::rng();
+        let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+
+        // Test various input sizes
+        for num_pairs in [1, 2, 4, 7, 8, 15, 16, 17, 32, 33] {
+            let children: Vec<_> = (0..num_pairs * 2)
+                .map(|_| PoseidonTweak44::rand_domain(&mut rng))
+                .collect();
+
+            let result = PoseidonTweak44::compute_tree_layer(&parameter, 1, 0, &children);
+
+            assert_eq!(
+                result.len(),
+                num_pairs,
+                "Expected {} parents for {} children, got {}",
+                num_pairs,
+                num_pairs * 2,
+                result.len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_compute_tree_layer_determinism() {
+        let mut rng = rand::rng();
+        let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+
+        let children: Vec<_> = (0..20)
+            .map(|_| PoseidonTweak44::rand_domain(&mut rng))
+            .collect();
+
+        let result1 = PoseidonTweak44::compute_tree_layer(&parameter, 1, 0, &children);
+        let result2 = PoseidonTweak44::compute_tree_layer(&parameter, 1, 0, &children);
+
+        assert_eq!(
+            result1, result2,
+            "compute_tree_layer should be deterministic"
+        );
+    }
+
+    #[test]
+    fn test_compute_tree_layer_level_affects_output() {
+        let mut rng = rand::rng();
+        let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+
+        let children: Vec<_> = (0..16)
+            .map(|_| PoseidonTweak44::rand_domain(&mut rng))
+            .collect();
+
+        let result_level_1 = PoseidonTweak44::compute_tree_layer(&parameter, 1, 0, &children);
+        let result_level_2 = PoseidonTweak44::compute_tree_layer(&parameter, 2, 0, &children);
+
+        assert_ne!(
+            result_level_1, result_level_2,
+            "Different levels should produce different outputs"
+        );
+    }
+
+    #[test]
+    fn test_compute_tree_layer_parent_start_affects_output() {
+        let mut rng = rand::rng();
+        let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+
+        let children: Vec<_> = (0..16)
+            .map(|_| PoseidonTweak44::rand_domain(&mut rng))
+            .collect();
+
+        let result_start_0 = PoseidonTweak44::compute_tree_layer(&parameter, 1, 0, &children);
+        let result_start_10 = PoseidonTweak44::compute_tree_layer(&parameter, 1, 10, &children);
+
+        assert_ne!(
+            result_start_0, result_start_10,
+            "Different parent_start should produce different outputs"
+        );
+    }
+
+    #[test]
+    fn test_compute_tree_layer_simd_boundary_exact_width() {
+        // Test with exactly 2 * WIDTH children (one full SIMD batch, no remainder)
+        let mut rng = rand::rng();
+        let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+
+        let width = PackedF::WIDTH;
+        let children: Vec<_> = (0..2 * width)
+            .map(|_| PoseidonTweak44::rand_domain(&mut rng))
+            .collect();
+
+        let simd_result = PoseidonTweak44::compute_tree_layer(&parameter, 1, 0, &children);
+        let scalar_result =
+            compute_tree_layer_scalar::<PoseidonTweak44>(&parameter, 1, 0, &children);
+
+        assert_eq!(simd_result, scalar_result);
+    }
+
+    #[test]
+    fn test_compute_tree_layer_simd_boundary_with_remainder() {
+        // Test with 2 * WIDTH + 2 children (one SIMD batch + one remainder pair)
+        let mut rng = rand::rng();
+        let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+
+        let width = PackedF::WIDTH;
+        let children: Vec<_> = (0..2 * width + 2)
+            .map(|_| PoseidonTweak44::rand_domain(&mut rng))
+            .collect();
+
+        let simd_result = PoseidonTweak44::compute_tree_layer(&parameter, 1, 0, &children);
+        let scalar_result =
+            compute_tree_layer_scalar::<PoseidonTweak44>(&parameter, 1, 0, &children);
+
+        assert_eq!(
+            simd_result.len(),
+            width + 1,
+            "Should have WIDTH + 1 parents"
+        );
+        assert_eq!(simd_result, scalar_result);
+    }
+
+    #[test]
+    fn test_compute_tree_layer_only_remainder() {
+        // Test with fewer than 2 * WIDTH children (entire computation is remainder)
+        let mut rng = rand::rng();
+        let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+
+        let width = PackedF::WIDTH;
+
+        // Test sizes smaller than one SIMD batch
+        for num_pairs in 1..width {
+            let children: Vec<_> = (0..num_pairs * 2)
+                .map(|_| PoseidonTweak44::rand_domain(&mut rng))
+                .collect();
+
+            let simd_result = PoseidonTweak44::compute_tree_layer(&parameter, 1, 0, &children);
+            let scalar_result =
+                compute_tree_layer_scalar::<PoseidonTweak44>(&parameter, 1, 0, &children);
+
+            assert_eq!(
+                simd_result, scalar_result,
+                "Failed for num_pairs = {}",
+                num_pairs
+            );
+        }
+    }
+
+    #[test]
+    fn test_compute_tree_layer_two_simd_batches() {
+        // Test with 4 * WIDTH children (two full SIMD batches)
+        let mut rng = rand::rng();
+        let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+
+        let width = PackedF::WIDTH;
+        let children: Vec<_> = (0..4 * width)
+            .map(|_| PoseidonTweak44::rand_domain(&mut rng))
+            .collect();
+
+        let simd_result = PoseidonTweak44::compute_tree_layer(&parameter, 1, 0, &children);
+        let scalar_result =
+            compute_tree_layer_scalar::<PoseidonTweak44>(&parameter, 1, 0, &children);
+
+        assert_eq!(simd_result.len(), 2 * width);
+        assert_eq!(simd_result, scalar_result);
+    }
+
+    #[test]
+    fn test_compute_tree_layer_two_batches_with_remainder() {
+        // Test with 4 * WIDTH + 2 children (two SIMD batches + one remainder pair)
+        let mut rng = rand::rng();
+        let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+
+        let width = PackedF::WIDTH;
+        let children: Vec<_> = (0..4 * width + 2)
+            .map(|_| PoseidonTweak44::rand_domain(&mut rng))
+            .collect();
+
+        let simd_result = PoseidonTweak44::compute_tree_layer(&parameter, 1, 0, &children);
+        let scalar_result =
+            compute_tree_layer_scalar::<PoseidonTweak44>(&parameter, 1, 0, &children);
+
+        assert_eq!(simd_result.len(), 2 * width + 1);
+        assert_eq!(simd_result, scalar_result);
+    }
+
+    #[test]
+    fn test_compute_tree_layer_boundary_sweep() {
+        // Test all sizes from 2 to 4 * WIDTH + 2 to catch off-by-one errors
+        let mut rng = rand::rng();
+        let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+
+        let width = PackedF::WIDTH;
+        let max_pairs = 4 * width + 1;
+
+        for num_pairs in 1..=max_pairs {
+            let children: Vec<_> = (0..num_pairs * 2)
+                .map(|_| PoseidonTweak44::rand_domain(&mut rng))
+                .collect();
+
+            let simd_result = PoseidonTweak44::compute_tree_layer(&parameter, 1, 0, &children);
+            let scalar_result =
+                compute_tree_layer_scalar::<PoseidonTweak44>(&parameter, 1, 0, &children);
+
+            assert_eq!(
+                simd_result, scalar_result,
+                "Mismatch for num_pairs = {} (WIDTH = {})",
+                num_pairs, width
+            );
+        }
+    }
+
+    #[test]
+    fn test_compute_tree_layer_nonzero_parent_start() {
+        // Test with various parent_start values to ensure tweaks are correct
+        let mut rng = rand::rng();
+        let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+
+        let width = PackedF::WIDTH;
+
+        for parent_start in [0, 1, 10, 100, 1000] {
+            let children: Vec<_> = (0..2 * width + 4)
+                .map(|_| PoseidonTweak44::rand_domain(&mut rng))
+                .collect();
+
+            let simd_result =
+                PoseidonTweak44::compute_tree_layer(&parameter, 1, parent_start, &children);
+            let scalar_result = compute_tree_layer_scalar::<PoseidonTweak44>(
+                &parameter,
+                1,
+                parent_start,
+                &children,
+            );
+
+            assert_eq!(
+                simd_result, scalar_result,
+                "Mismatch for parent_start = {}",
+                parent_start
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_compute_tree_layer_matches_scalar(
+            num_pairs in 1usize..64,
+            level in 0u8..32,
+            parent_start in 0usize..1000,
+            seed in any::<u64>(),
+        ) {
+            use rand::SeedableRng;
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+
+            let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+            let children: Vec<_> = (0..num_pairs * 2)
+                .map(|_| PoseidonTweak44::rand_domain(&mut rng))
+                .collect();
+
+            let simd_result =
+                PoseidonTweak44::compute_tree_layer(&parameter, level, parent_start, &children);
+            let scalar_result =
+                compute_tree_layer_scalar::<PoseidonTweak44>(&parameter, level, parent_start, &children);
+
+            prop_assert_eq!(simd_result.len(), num_pairs);
+            prop_assert_eq!(simd_result, scalar_result);
         }
     }
 }
