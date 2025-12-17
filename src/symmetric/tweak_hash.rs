@@ -63,11 +63,7 @@ pub trait TweakableHash {
                 // Parent index in this layer
                 let parent_pos = (parent_start + i) as u32;
                 // Hash children into their parent using the tweak
-                Self::apply(
-                    parameter,
-                    &Self::tree_tweak(level + 1, parent_pos),
-                    children,
-                )
+                Self::apply(parameter, &Self::tree_tweak(level, parent_pos), children)
             })
             .collect()
     }
