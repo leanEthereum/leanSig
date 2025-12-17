@@ -371,6 +371,10 @@ impl<
         }
     }
 
+    /// SIMD-accelerated computation of one Merkle tree layer.
+    ///
+    /// Processes `PackedF::WIDTH` parent pairs simultaneously using SIMD instructions,
+    /// with a scalar fallback for any remainder elements.
     fn compute_tree_layer(
         parameter: &Self::Parameter,
         level: u8,

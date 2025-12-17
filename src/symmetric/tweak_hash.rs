@@ -48,7 +48,26 @@ pub trait TweakableHash {
         message: &[Self::Domain],
     ) -> Self::Domain;
 
-    /// Applies the calculation for a single tweak hash tree layer.
+    /// Computes one layer of a Merkle tree by hashing pairs of children into parents.
+    ///
+    /// Consecutive pairs of child nodes produce their parent node by hashing
+    /// `(children[2*i], children[2*i+1])`. Each hash application uses a unique
+    /// tweak derived from the tree level and position.
+    ///
+    /// # Arguments
+    /// * `parameter` - Public parameter for the hash function
+    /// * `level` - Tree level of the *parent* nodes being computed. NOTE: callers
+    ///   need to pass `level + 1` where `level` is the children's level, since
+    ///   tree levels are numbered from leaves (level 0) upward.
+    /// * `parent_start` - Starting index of the first parent in this layer, used
+    ///   for computing position-dependent tweaks
+    /// * `children` - Slice of child nodes to hash pairwise (length must be even)
+    ///
+    /// # Returns
+    /// A vector of parent nodes with length `children.len() / 2`.
+    ///
+    /// This default implementation processes pairs in parallel using Rayon.
+    /// The Poseidon implementation overrides this with a SIMD-accelerated variant.
     fn compute_tree_layer(
         parameter: &Self::Parameter,
         level: u8,
