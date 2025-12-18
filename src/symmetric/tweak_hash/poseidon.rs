@@ -518,6 +518,8 @@ impl<
         let sponge_chains_offset = PARAMETER_LEN + TWEAK_LEN;
         let sponge_input_len = PARAMETER_LEN + TWEAK_LEN + NUM_CHUNKS * HASH_LEN;
 
+        // We use a thread local storage to guarantee the `packed_leaf_input` vector is only allocated
+        // once per thread
         let tls: ThreadLocal<RefCell<Vec<PackedF>>> = ThreadLocal::new();
 
         // PARALLEL SIMD PROCESSING
@@ -616,9 +618,8 @@ impl<
 
                 // Assemble the sponge input.
                 // Layout: [parameter | tree_tweak | all_chain_ends]
-                // NOTE: `packed_leaf_input` is preallocated per worker. We overwrite the entire
+                // NOTE: `packed_leaf_input` is preallocated per thread. We overwrite the entire
                 // vector in each iteration, so no need to `fill(0)`!
-                //let mut packed_leaf_input = vec![PackedF::ZERO; sponge_input_len];
 
                 // Copy pre-packed parameter
                 packed_leaf_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
