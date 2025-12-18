@@ -201,34 +201,47 @@ where
     );
     let rate = WIDTH - capacity_value.len();
 
-    let extra_elements = (rate - (input.len() % rate)) % rate;
-    let mut input_vector = input.to_vec();
-    // We pad the input with zeros to make its length a multiple of the rate.
-    //
-    // This is safe because the input's original length is effectively encoded
-    // in the `capacity_value`, which serves as a domain separator.
-    input_vector.resize(input.len() + extra_elements, A::ZERO);
-
     // initialize
     let mut state = [A::ZERO; WIDTH];
     state[rate..].copy_from_slice(capacity_value);
 
-    // absorb
-    for chunk in input_vector.chunks(rate) {
+    let extra_elements = (rate - (input.len() % rate)) % rate;
+    // Instead of converting the input to a vector, resizing and feeding the data into the
+    // sponge, we instead fill in the vector from all chunks until we are left with a non
+    // full chunk. We only add to the state, so padded data does not mutate `state` at all.
+
+    // 1. fill in all full chunks and permute
+    let mut it = input.chunks_exact(rate);
+    for chunk in &mut it {
+        //input.chunks_exact(rate) {
+        // iterate the chunks
         for i in 0..chunk.len() {
             state[i] += chunk[i];
         }
         perm.permute_mut(&mut state);
     }
-
-    // squeeze
-    let mut out = vec![];
-    while out.len() < OUT_LEN {
-        out.extend_from_slice(&state[..rate]);
+    // 2. fill the remainder and extend with zeros
+    let remainder = rate - extra_elements;
+    if remainder > 0 {
+        for (i, x) in it.remainder().iter().enumerate() {
+            state[i] += *x;
+        }
+        // was a remainder, so permute. No need to mutate `state` as we *add* only anyway
         perm.permute_mut(&mut state);
     }
-    let slice = &out[0..OUT_LEN];
-    slice.try_into().expect("Length mismatch")
+
+    // squeeze
+    let mut out = [A::ZERO; OUT_LEN];
+    let mut out_idx = 0;
+    while out_idx < OUT_LEN {
+        let chunk_size = (OUT_LEN - out_idx).min(rate);
+        out[out_idx..out_idx + chunk_size].copy_from_slice(&state[..chunk_size]);
+        out_idx += chunk_size;
+        if out_idx < OUT_LEN {
+            perm.permute_mut(&mut state);
+        }
+    }
+    out
 }
 
 /// A tweakable hash function implemented using Poseidon2
