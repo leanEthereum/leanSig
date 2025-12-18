@@ -570,44 +570,44 @@ impl<
                 let chain_value_offset = PARAMETER_LEN + TWEAK_LEN;
 
                 for (chain_index, packed_chain) in
-                        packed_chains.iter_mut().enumerate().take(num_chains)
-                    {
-                        // Walk this chain for `chain_length - 1` steps.
-                        // The starting point is step 0, so we need `chain_length - 1` iterations.
-                        for step in 0..chain_length - 1 {
-                            // Current position in the chain.
-                            let pos = (step + 1) as u8;
+                    packed_chains.iter_mut().enumerate().take(num_chains)
+                {
+                    // Walk this chain for `chain_length - 1` steps.
+                    // The starting point is step 0, so we need `chain_length - 1` iterations.
+                    for step in 0..chain_length - 1 {
+                        // Current position in the chain.
+                        let pos = (step + 1) as u8;
 
-                            // Assemble the packed input for the hash function.
-                            // Layout: [parameter | tweak | current_value]
-                            let mut packed_input = [PackedF::ZERO; CHAIN_COMPRESSION_WIDTH];
+                        // Assemble the packed input for the hash function.
+                        // Layout: [parameter | tweak | current_value]
+                        let mut packed_input = [PackedF::ZERO; CHAIN_COMPRESSION_WIDTH];
 
-                            // Copy pre-packed parameter
-                            packed_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
+                        // Copy pre-packed parameter
+                        packed_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
 
-                            // Pack tweaks directly into destination
-                            pack_fn_into::<TWEAK_LEN>(
-                                &mut packed_input,
-                                chain_tweak_offset,
-                                |t_idx, lane| {
-                                    Self::chain_tweak(epoch_chunk[lane], chain_index as u8, pos)
-                                        .to_field_elements::<TWEAK_LEN>()[t_idx]
-                                },
-                            );
+                        // Pack tweaks directly into destination
+                        pack_fn_into::<TWEAK_LEN>(
+                            &mut packed_input,
+                            chain_tweak_offset,
+                            |t_idx, lane| {
+                                Self::chain_tweak(epoch_chunk[lane], chain_index as u8, pos)
+                                    .to_field_elements::<TWEAK_LEN>()[t_idx]
+                            },
+                        );
 
-                            // Copy current chain value (already packed)
-                            packed_input[chain_value_offset..chain_value_offset + HASH_LEN]
-                                .copy_from_slice(packed_chain);
+                        // Copy current chain value (already packed)
+                        packed_input[chain_value_offset..chain_value_offset + HASH_LEN]
+                            .copy_from_slice(packed_chain);
 
-                            // Apply the hash function to advance the chain.
-                            // This single call processes all epochs in parallel.
-                            *packed_chain =
+                        // Apply the hash function to advance the chain.
+                        // This single call processes all epochs in parallel.
+                        *packed_chain =
                                 poseidon_compress::<PackedF, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
                                     &chain_perm,
                                     &packed_input,
                                 );
-                        }
                     }
+                }
 
                 // STEP 3: HASH CHAIN ENDS TO PRODUCE TREE LEAVES
                 //
