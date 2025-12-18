@@ -312,36 +312,40 @@ impl<
             [single] => {
                 // we compress parameter, tweak, message
                 let perm = poseidon2_16();
-                let combined_input: Vec<F> = parameter
-                    .iter()
-                    .chain(tweak_fe.iter())
-                    .chain(single.iter())
-                    .copied()
-                    .collect();
-                FieldArray(
-                    poseidon_compress::<F, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
-                        &perm,
-                        &combined_input,
-                    ),
-                )
+
+                // Build input on stack: [parameter | tweak | message]
+                let mut combined_input = [F::ZERO; CHAIN_COMPRESSION_WIDTH];
+                combined_input[..PARAMETER_LEN].copy_from_slice(&parameter.0);
+                combined_input[PARAMETER_LEN..PARAMETER_LEN + TWEAK_LEN]
+                    .copy_from_slice(&tweak_fe);
+                combined_input[PARAMETER_LEN + TWEAK_LEN..PARAMETER_LEN + TWEAK_LEN + HASH_LEN]
+                    .copy_from_slice(&single.0);
+
+                FieldArray(poseidon_compress::<F, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
+                    &perm,
+                    &combined_input,
+                ))
             }
 
             [left, right] => {
                 // we compress parameter, tweak, message (now containing two parts)
                 let perm = poseidon2_24();
-                let combined_input: Vec<F> = parameter
-                    .iter()
-                    .chain(tweak_fe.iter())
-                    .chain(left.iter())
-                    .chain(right.iter())
-                    .copied()
-                    .collect();
-                FieldArray(
-                    poseidon_compress::<F, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
-                        &perm,
-                        &combined_input,
-                    ),
-                )
+
+                // Build input on stack: [parameter | tweak | left | right]
+                let mut combined_input = [F::ZERO; MERGE_COMPRESSION_WIDTH];
+                combined_input[..PARAMETER_LEN].copy_from_slice(&parameter.0);
+                combined_input[PARAMETER_LEN..PARAMETER_LEN + TWEAK_LEN]
+                    .copy_from_slice(&tweak_fe);
+                combined_input[PARAMETER_LEN + TWEAK_LEN..PARAMETER_LEN + TWEAK_LEN + HASH_LEN]
+                    .copy_from_slice(&left.0);
+                combined_input
+                    [PARAMETER_LEN + TWEAK_LEN + HASH_LEN..PARAMETER_LEN + TWEAK_LEN + 2 * HASH_LEN]
+                    .copy_from_slice(&right.0);
+
+                FieldArray(poseidon_compress::<F, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
+                    &perm,
+                    &combined_input,
+                ))
             }
 
             _ if message.len() > 2 => {
