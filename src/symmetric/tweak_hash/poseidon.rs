@@ -505,6 +505,11 @@ impl<
         let capacity_val: [PackedF; CAPACITY] =
             poseidon_safe_domain_separator::<CAPACITY>(&sponge_perm, &lengths).map(PackedF::from);
 
+        // Compute sponge input length. Required to init packed input vector for each rayon worker
+        let sponge_tweak_offset = PARAMETER_LEN;
+        let sponge_chains_offset = PARAMETER_LEN + TWEAK_LEN;
+        let sponge_input_len = PARAMETER_LEN + TWEAK_LEN + NUM_CHUNKS * HASH_LEN;
+
         // PARALLEL SIMD PROCESSING
         //
         // Process epochs in batches of size `width`.
@@ -513,126 +518,132 @@ impl<
         epochs
             .par_chunks_exact(width)
             .zip(leaves.par_chunks_exact_mut(width))
-            .for_each(|(epoch_chunk, leaves_chunk)| {
-                // STEP 1: GENERATE AND PACK CHAIN STARTING POINTS
-                //
-                // For each chain, generate starting points for all epochs in the chunk.
-                // Use vertical packing: transpose from [lane][element] to [element][lane].
-                //
-                // This layout enables efficient SIMD operations across epochs.
+            .for_each_init(
+                || vec![PackedF::ZERO; sponge_input_len],
+                |packed_leaf_input, (epoch_chunk, leaves_chunk)| {
+                    // STEP 1: GENERATE AND PACK CHAIN STARTING POINTS
+                    //
+                    // For each chain, generate starting points for all epochs in the chunk.
+                    // Use vertical packing: transpose from [lane][element] to [element][lane].
+                    //
+                    // This layout enables efficient SIMD operations across epochs.
 
-                let mut packed_chains: [[PackedF; HASH_LEN]; NUM_CHUNKS] =
-                    array::from_fn(|c_idx| {
-                        // Generate starting points for this chain across all epochs.
-                        let starts: [_; PackedF::WIDTH] = array::from_fn(|lane| {
-                            PRF::get_domain_element(prf_key, epoch_chunk[lane], c_idx as u64).into()
+                    let mut packed_chains: [[PackedF; HASH_LEN]; NUM_CHUNKS] =
+                        array::from_fn(|c_idx| {
+                            // Generate starting points for this chain across all epochs.
+                            let starts: [_; PackedF::WIDTH] = array::from_fn(|lane| {
+                                PRF::get_domain_element(prf_key, epoch_chunk[lane], c_idx as u64)
+                                    .into()
+                            });
+
+                            // Transpose to vertical packing for SIMD efficiency.
+                            pack_array(&starts)
                         });
 
-                        // Transpose to vertical packing for SIMD efficiency.
-                        pack_array(&starts)
-                    });
+                    // STEP 2: WALK CHAINS IN PARALLEL USING SIMD
+                    //
+                    // For each chain, walk all epochs simultaneously using SIMD.
+                    // The chains start at their initial values and are walked step-by-step
+                    // until they reach their endpoints.
+                    //
+                    // Cache strategy: process one chain at a time to maximize locality.
+                    // All epochs for that chain stay in registers across iterations.
 
-                // STEP 2: WALK CHAINS IN PARALLEL USING SIMD
-                //
-                // For each chain, walk all epochs simultaneously using SIMD.
-                // The chains start at their initial values and are walked step-by-step
-                // until they reach their endpoints.
-                //
-                // Cache strategy: process one chain at a time to maximize locality.
-                // All epochs for that chain stay in registers across iterations.
+                    // Offsets for chain compression: [parameter | tweak | current_value]
+                    let chain_tweak_offset = PARAMETER_LEN;
+                    let chain_value_offset = PARAMETER_LEN + TWEAK_LEN;
 
-                // Offsets for chain compression: [parameter | tweak | current_value]
-                let chain_tweak_offset = PARAMETER_LEN;
-                let chain_value_offset = PARAMETER_LEN + TWEAK_LEN;
+                    for (chain_index, packed_chain) in
+                        packed_chains.iter_mut().enumerate().take(num_chains)
+                    {
+                        // Walk this chain for `chain_length - 1` steps.
+                        // The starting point is step 0, so we need `chain_length - 1` iterations.
+                        for step in 0..chain_length - 1 {
+                            // Current position in the chain.
+                            let pos = (step + 1) as u8;
 
-                for (chain_index, packed_chain) in
-                    packed_chains.iter_mut().enumerate().take(num_chains)
-                {
-                    // Walk this chain for `chain_length - 1` steps.
-                    // The starting point is step 0, so we need `chain_length - 1` iterations.
-                    for step in 0..chain_length - 1 {
-                        // Current position in the chain.
-                        let pos = (step + 1) as u8;
+                            // Assemble the packed input for the hash function.
+                            // Layout: [parameter | tweak | current_value]
+                            let mut packed_input = [PackedF::ZERO; CHAIN_COMPRESSION_WIDTH];
 
-                        // Assemble the packed input for the hash function.
-                        // Layout: [parameter | tweak | current_value]
-                        let mut packed_input = [PackedF::ZERO; CHAIN_COMPRESSION_WIDTH];
+                            // Copy pre-packed parameter
+                            packed_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
 
-                        // Copy pre-packed parameter
-                        packed_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
+                            // Pack tweaks directly into destination
+                            pack_fn_into::<TWEAK_LEN>(
+                                &mut packed_input,
+                                chain_tweak_offset,
+                                |t_idx, lane| {
+                                    Self::chain_tweak(epoch_chunk[lane], chain_index as u8, pos)
+                                        .to_field_elements::<TWEAK_LEN>()[t_idx]
+                                },
+                            );
 
-                        // Pack tweaks directly into destination
-                        pack_fn_into::<TWEAK_LEN>(
-                            &mut packed_input,
-                            chain_tweak_offset,
-                            |t_idx, lane| {
-                                Self::chain_tweak(epoch_chunk[lane], chain_index as u8, pos)
-                                    .to_field_elements::<TWEAK_LEN>()[t_idx]
-                            },
+                            // Copy current chain value (already packed)
+                            packed_input[chain_value_offset..chain_value_offset + HASH_LEN]
+                                .copy_from_slice(packed_chain);
+
+                            // Apply the hash function to advance the chain.
+                            // This single call processes all epochs in parallel.
+                            *packed_chain =
+                                poseidon_compress::<PackedF, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
+                                    &chain_perm,
+                                    &packed_input,
+                                );
+                        }
+                    }
+
+                    // STEP 3: HASH CHAIN ENDS TO PRODUCE TREE LEAVES
+                    //
+                    // All chains have been walked to their endpoints.
+                    // Now hash all chain ends together to form the tree leaf.
+                    //
+                    // This uses the sponge construction for variable-length input.
+
+                    // Assemble the sponge input.
+                    // Layout: [parameter | tree_tweak | all_chain_ends]
+                    // NOTE: `packed_leaf_input` is preallocated per worker. We overwrite the entire
+                    // vector in each iteration, so no need to `fill(0)`!
+                    //let mut packed_leaf_input = vec![PackedF::ZERO; sponge_input_len];
+
+                    // Copy pre-packed parameter
+                    packed_leaf_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
+
+                    // Pack tree tweaks directly (level 0 for bottom-layer leaves)
+                    pack_fn_into::<TWEAK_LEN>(
+                        packed_leaf_input,
+                        sponge_tweak_offset,
+                        |t_idx, lane| {
+                            Self::tree_tweak(0, epoch_chunk[lane]).to_field_elements::<TWEAK_LEN>()
+                                [t_idx]
+                        },
+                    );
+
+                    // Copy all chain ends (already packed)
+                    let dst = &mut packed_leaf_input[sponge_chains_offset
+                        ..sponge_chains_offset + packed_chains.len() * HASH_LEN];
+                    for (dst_chunk, src_chain) in
+                        dst.chunks_exact_mut(HASH_LEN).zip(packed_chains.iter())
+                    {
+                        dst_chunk.copy_from_slice(src_chain);
+                    }
+
+                    // Apply the sponge hash to produce the leaf.
+                    // This absorbs all chain ends and squeezes out the final hash.
+                    let packed_leaves =
+                        poseidon_sponge::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
+                            &sponge_perm,
+                            &capacity_val,
+                            &packed_leaf_input,
                         );
 
-                        // Copy current chain value (already packed)
-                        packed_input[chain_value_offset..chain_value_offset + HASH_LEN]
-                            .copy_from_slice(packed_chain);
-
-                        // Apply the hash function to advance the chain.
-                        // This single call processes all epochs in parallel.
-                        *packed_chain =
-                            poseidon_compress::<PackedF, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
-                                &chain_perm,
-                                &packed_input,
-                            );
-                    }
-                }
-
-                // STEP 3: HASH CHAIN ENDS TO PRODUCE TREE LEAVES
-                //
-                // All chains have been walked to their endpoints.
-                // Now hash all chain ends together to form the tree leaf.
-                //
-                // This uses the sponge construction for variable-length input.
-
-                // Assemble the sponge input.
-                // Layout: [parameter | tree_tweak | all_chain_ends]
-                let sponge_tweak_offset = PARAMETER_LEN;
-                let sponge_chains_offset = PARAMETER_LEN + TWEAK_LEN;
-                let sponge_input_len = PARAMETER_LEN + TWEAK_LEN + NUM_CHUNKS * HASH_LEN;
-
-                let mut packed_leaf_input = vec![PackedF::ZERO; sponge_input_len];
-
-                // Copy pre-packed parameter
-                packed_leaf_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
-
-                // Pack tree tweaks directly (level 0 for bottom-layer leaves)
-                pack_fn_into::<TWEAK_LEN>(
-                    &mut packed_leaf_input,
-                    sponge_tweak_offset,
-                    |t_idx, lane| {
-                        Self::tree_tweak(0, epoch_chunk[lane]).to_field_elements::<TWEAK_LEN>()
-                            [t_idx]
-                    },
-                );
-
-                // Copy all chain ends (already packed)
-                let dst = &mut packed_leaf_input[sponge_chains_offset .. sponge_chains_offset + packed_chains.len() * HASH_LEN];
-                for (dst_chunk, src_chain) in dst.chunks_exact_mut(HASH_LEN).zip(packed_chains.iter()) {
-                    dst_chunk.copy_from_slice(src_chain);
-                }
-
-                // Apply the sponge hash to produce the leaf.
-                // This absorbs all chain ends and squeezes out the final hash.
-                let packed_leaves = poseidon_sponge::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
-                    &sponge_perm,
-                    &capacity_val,
-                    &packed_leaf_input,
-                );
-
-                // STEP 4: UNPACK RESULTS TO SCALAR REPRESENTATION
-                //
-                // Convert from vertical packing back to scalar layout.
-                // Each lane becomes one leaf in the output slice.
-                unpack_array(&packed_leaves, leaves_chunk);
-            });
+                    // STEP 4: UNPACK RESULTS TO SCALAR REPRESENTATION
+                    //
+                    // Convert from vertical packing back to scalar layout.
+                    // Each lane becomes one leaf in the output slice.
+                    unpack_array(&packed_leaves, leaves_chunk);
+                },
+            );
 
         // HANDLE REMAINDER EPOCHS
         //
