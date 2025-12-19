@@ -31,39 +31,6 @@ pub fn pack_array<const N: usize>(data: &[FieldArray<N>]) -> [PackedF; N] {
     array::from_fn(|i| PackedF::from_fn(|j| data[j][i]))
 }
 
-/// Unpacks SIMD vertical layout back into scalar arrays.
-///
-/// Transposes from vertical layout `[PackedF; N]` to horizontal layout `[FieldArray<N>; WIDTH]`.
-///
-/// This is the inverse operation of `pack_array`. The output buffer must be preallocated
-/// with size `[WIDTH]` where `WIDTH = PackedF::WIDTH`, and each element is a `FieldArray<N>`.
-///
-/// Input layout (vertical): each PackedF holds one element from each array
-/// ```text
-/// packed_data[0] = PackedF([a0, b0, c0, ...])
-/// packed_data[1] = PackedF([a1, b1, c1, ...])
-/// packed_data[2] = PackedF([a2, b2, c2, ...])
-/// ...
-/// ```
-///
-/// Output layout (horizontal): each FieldArray is one complete array
-/// ```text
-/// output[0] = FieldArray([a0, a1, a2, ..., aN])
-/// output[1] = FieldArray([b0, b1, b2, ..., bN])
-/// output[2] = FieldArray([c0, c1, c2, ..., cN])
-/// ...
-/// ```
-#[inline]
-pub fn unpack_array<const N: usize>(packed_data: &[PackedF; N], output: &mut [FieldArray<N>]) {
-    // Optimized for cache locality: iterate over output lanes first
-    #[allow(clippy::needless_range_loop)]
-    for j in 0..PackedF::WIDTH {
-        for i in 0..N {
-            output[j].0[i] = packed_data[i].as_slice()[j];
-        }
-    }
-}
-
 /// Pack even-indexed FieldArrays (stride 2) directly into destination.
 ///
 /// Packs `data[0], data[2], data[4], ...` into `dest[offset..offset+N]`.
@@ -146,25 +113,6 @@ mod tests {
     }
 
     #[test]
-    fn test_unpack_array_simple() {
-        // Create packed data
-        let packed: [PackedF; 2] = [
-            PackedF::from_fn(|i| F::from_u64(i as u64)),
-            PackedF::from_fn(|i| F::from_u64((i + 100) as u64)),
-        ];
-
-        // Unpack
-        let mut output = [FieldArray([F::ZERO; 2]); PackedF::WIDTH];
-        unpack_array(&packed, &mut output);
-
-        // Verify
-        for (lane, arr) in output.iter().enumerate() {
-            assert_eq!(arr[0], F::from_u64(lane as u64));
-            assert_eq!(arr[1], F::from_u64((lane + 100) as u64));
-        }
-    }
-
-    #[test]
     fn test_pack_preserves_element_order() {
         // Create data where each array has sequential values
         let data: [FieldArray<3>; PackedF::WIDTH] = array::from_fn(|i| {
@@ -189,26 +137,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_unpack_preserves_element_order() {
-        // Create packed data with known pattern
-        let packed: [PackedF; 3] = [
-            PackedF::from_fn(|i| F::from_u64((i * 3) as u64)),
-            PackedF::from_fn(|i| F::from_u64((i * 3 + 1) as u64)),
-            PackedF::from_fn(|i| F::from_u64((i * 3 + 2) as u64)),
-        ];
-
-        let mut output = [FieldArray([F::ZERO; 3]); PackedF::WIDTH];
-        unpack_array(&packed, &mut output);
-
-        // Verify each array has sequential values
-        for (lane, arr) in output.iter().enumerate() {
-            assert_eq!(arr[0], F::from_u64((lane * 3) as u64));
-            assert_eq!(arr[1], F::from_u64((lane * 3 + 1) as u64));
-            assert_eq!(arr[2], F::from_u64((lane * 3 + 2) as u64));
-        }
-    }
-
     proptest! {
         #[test]
         fn proptest_pack_unpack_roundtrip(
@@ -224,7 +152,7 @@ mod tests {
             // Pack and unpack
             let packed = pack_array(&original);
             let mut unpacked = [FieldArray([F::ZERO; 10]); PackedF::WIDTH];
-            unpack_array(&packed, &mut unpacked);
+            PackedF::unpack_into(&packed, FieldArray::as_raw_slice_mut(&mut unpacked));
 
             // Verify roundtrip
             prop_assert_eq!(original, unpacked);
