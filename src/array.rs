@@ -32,9 +32,10 @@ impl<const N: usize> FieldArray<N> {
     /// This is a zero-cost transmute enabled by the `#[repr(transparent)]` layout.
     #[inline]
     pub fn as_raw_slice_mut(s: &mut [Self]) -> &mut [[F; N]] {
-        // SAFETY: `FieldArray<N>` is `#[repr(transparent)]` over `[F; N]`,
-        // so `&mut [FieldArray<N>]` and `&mut [[F; N]]` have identical layouts.
-        unsafe { &mut *(s as *mut [Self] as *mut [[F; N]]) }
+        // SAFETY: `FieldArray<N>` is `#[repr(transparent)]` over `[F; N]`.
+        //
+        // So `&mut [FieldArray<N>]` and `&mut [[F; N]]` have identical layouts.
+        unsafe { &mut *(std::ptr::from_mut::<[Self]>(s) as *mut [[F; N]]) }
     }
 }
 
