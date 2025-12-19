@@ -26,6 +26,18 @@ impl<const N: usize> DerefMut for FieldArray<N> {
     }
 }
 
+impl<const N: usize> FieldArray<N> {
+    /// View a mutable slice of `FieldArray<N>` as a mutable slice of raw `[F; N]` arrays.
+    ///
+    /// This is a zero-cost transmute enabled by the `#[repr(transparent)]` layout.
+    #[inline]
+    pub fn as_raw_slice_mut(s: &mut [Self]) -> &mut [[F; N]] {
+        // SAFETY: `FieldArray<N>` is `#[repr(transparent)]` over `[F; N]`,
+        // so `&mut [FieldArray<N>]` and `&mut [[F; N]]` have identical layouts.
+        unsafe { &mut *(s as *mut [Self] as *mut [[F; N]]) }
+    }
+}
+
 impl<const N: usize> From<[F; N]> for FieldArray<N> {
     fn from(arr: [F; N]) -> Self {
         Self(arr)
