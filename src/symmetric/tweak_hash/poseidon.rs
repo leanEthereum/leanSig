@@ -18,7 +18,6 @@ use super::TweakableHash;
 
 use p3_koala_bear::Poseidon2KoalaBear;
 use std::cell::RefCell;
-use thread_local::ThreadLocal;
 
 const DOMAIN_PARAMETERS_LENGTH: usize = 4;
 /// The state width for compressing a single hash in a chain.
@@ -517,9 +516,11 @@ impl<
         let sponge_chains_offset = PARAMETER_LEN + TWEAK_LEN;
         let sponge_input_len = PARAMETER_LEN + TWEAK_LEN + NUM_CHUNKS * HASH_LEN;
 
-        // We use a thread local storage to guarantee the `packed_leaf_input` vector is only allocated
+        // We use thread-local storage to guarantee the `packed_leaf_input` vector is only allocated
         // once per thread
-        let tls: ThreadLocal<RefCell<Vec<PackedF>>> = ThreadLocal::new();
+        thread_local! {
+            static PACKED_LEAF_INPUT: RefCell<Vec<PackedF>> = const { RefCell::new(Vec::new()) };
+        }
 
         // PARALLEL SIMD PROCESSING
         //
@@ -537,18 +538,11 @@ impl<
                 //
                 // This layout enables efficient SIMD operations across epochs.
 
-                let cell = tls.get_or(|| {
-                    RefCell::new(vec![PackedF::ZERO; sponge_input_len])
-                });
-                let mut packed_leaf_input = cell.borrow_mut();
-                // reset not needed
-
                 let mut packed_chains: [[PackedF; HASH_LEN]; NUM_CHUNKS] =
                     array::from_fn(|c_idx| {
                         // Generate starting points for this chain across all epochs.
                         let starts: [_; PackedF::WIDTH] = array::from_fn(|lane| {
-                            PRF::get_domain_element(prf_key, epoch_chunk[lane], c_idx as u64)
-                                .into()
+                            PRF::get_domain_element(prf_key, epoch_chunk[lane], c_idx as u64).into()
                         });
 
                         // Transpose to vertical packing for SIMD efficiency.
@@ -601,10 +595,10 @@ impl<
                         // Apply the hash function to advance the chain.
                         // This single call processes all epochs in parallel.
                         *packed_chain =
-                                poseidon_compress::<PackedF, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
-                                    &chain_perm,
-                                    &packed_input,
-                                );
+                            poseidon_compress::<PackedF, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
+                                &chain_perm,
+                                &packed_input,
+                            );
                     }
                 }
 
@@ -619,45 +613,49 @@ impl<
                 // Layout: [parameter | tree_tweak | all_chain_ends]
                 // NOTE: `packed_leaf_input` is preallocated per thread. We overwrite the entire
                 // vector in each iteration, so no need to `fill(0)`!
+                let packed_leaves = PACKED_LEAF_INPUT.with_borrow_mut(|packed_leaf_input| {
+                    // Resize on first use for this thread
+                    if packed_leaf_input.len() != sponge_input_len {
+                        packed_leaf_input.resize(sponge_input_len, PackedF::ZERO);
+                    }
 
-                // Copy pre-packed parameter
-                packed_leaf_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
+                    // Copy pre-packed parameter
+                    packed_leaf_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
 
-                // Pack tree tweaks directly (level 0 for bottom-layer leaves)
-                pack_fn_into::<TWEAK_LEN>(
-                    &mut packed_leaf_input,
-                    sponge_tweak_offset,
-                    |t_idx, lane| {
-                        Self::tree_tweak(0, epoch_chunk[lane]).to_field_elements::<TWEAK_LEN>()
+                    // Pack tree tweaks directly (level 0 for bottom-layer leaves)
+                    pack_fn_into::<TWEAK_LEN>(
+                        packed_leaf_input,
+                        sponge_tweak_offset,
+                        |t_idx, lane| {
+                            Self::tree_tweak(0, epoch_chunk[lane]).to_field_elements::<TWEAK_LEN>()
                                 [t_idx]
-                    },
-                );
+                        },
+                    );
 
-                // Copy all chain ends (already packed)
-                let dst = &mut packed_leaf_input[sponge_chains_offset
+                    // Copy all chain ends (already packed)
+                    let dst = &mut packed_leaf_input[sponge_chains_offset
                         ..sponge_chains_offset + packed_chains.len() * HASH_LEN];
-                for (dst_chunk, src_chain) in
+                    for (dst_chunk, src_chain) in
                         dst.chunks_exact_mut(HASH_LEN).zip(packed_chains.iter())
                     {
                         dst_chunk.copy_from_slice(src_chain);
                     }
 
-                // Apply the sponge hash to produce the leaf.
-                // This absorbs all chain ends and squeezes out the final hash.
-                let packed_leaves =
+                    // Apply the sponge hash to produce the leaf.
+                    // This absorbs all chain ends and squeezes out the final hash.
                     poseidon_sponge::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
                         &sponge_perm,
                         &capacity_val,
-                        &packed_leaf_input,
-                    );
+                        packed_leaf_input,
+                    )
+                });
 
                 // STEP 4: UNPACK RESULTS TO SCALAR REPRESENTATION
                 //
                 // Convert from vertical packing back to scalar layout.
                 // Each lane becomes one leaf in the output slice.
                 unpack_array(&packed_leaves, leaves_chunk);
-            },
-            );
+            });
 
         // HANDLE REMAINDER EPOCHS
         //

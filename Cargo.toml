@@ -46,8 +46,6 @@ p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3.git", rev = "a33a312"
 p3-koala-bear = { git = "https://github.com/Plonky3/Plonky3.git", rev = "a33a312" }
 p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", rev = "a33a312" }
 
-thread_local = "1.1.9"
-
 [dev-dependencies]
 criterion = "0.7"
 proptest = "1.7"
