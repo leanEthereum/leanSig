@@ -215,10 +215,9 @@ where
     // 1. fill in all full chunks and permute
     let mut it = input.chunks_exact(rate);
     for chunk in &mut it {
-        //input.chunks_exact(rate) {
         // iterate the chunks
-        for i in 0..chunk.len() {
-            state[i] += chunk[i];
+        for (s, &x) in state.iter_mut().take(rate).zip(chunk) {
+            *s += x;
         }
         perm.permute_mut(&mut state);
     }
