@@ -60,3 +60,7 @@ with-gen-benches-poseidon-top-level = []
 [[bench]]
 name = "benchmark"
 harness = false
+
+[profile.profiling]
+inherits = "release"
+debug = true
