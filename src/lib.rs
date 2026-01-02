@@ -34,6 +34,11 @@ static POSEIDON2_24: OnceLock<Poseidon2KoalaBear<24>> = OnceLock::new();
 static POSEIDON2_16: OnceLock<Poseidon2KoalaBear<16>> = OnceLock::new();
 
 /// Errors returned when initializing a custom Poseidon2 permutation.
+///
+/// This crate caches Poseidon2 permutations (width 24 and 16) using `OnceLock`.
+/// Initialization is therefore a one-time operation: attempting to initialize after the
+/// permutation has already been set (or lazily created by first use) returns
+/// `Poseidon2InitError::AlreadyInitialized`.
 #[derive(Debug, thiserror::Error)]
 pub enum Poseidon2InitError {
     #[error("Poseidon2 permutation for width {width} was already initialized")]
@@ -44,6 +49,18 @@ pub enum Poseidon2InitError {
 ///
 /// This must be called before the first use of the permutation (i.e. before any code paths that
 /// compute message/tweak hashes). If not called, the default Plonky3 permutation is used.
+///
+/// # Example
+/// ```no_run
+/// use leansig::init_poseidon2_24_with;
+///
+/// // Build your custom Poseidon2(24) permutation here.
+/// // For example, from a spec-aligned constant set.
+/// init_poseidon2_24_with(|| {
+///     // ... construct Poseidon2KoalaBear<24> ...
+///     unimplemented!()
+/// }).unwrap();
+/// ```
 pub fn init_poseidon2_24(perm: Poseidon2KoalaBear<24>) -> Result<(), Poseidon2InitError> {
     POSEIDON2_24
         .set(perm)
@@ -53,6 +70,10 @@ pub fn init_poseidon2_24(perm: Poseidon2KoalaBear<24>) -> Result<(), Poseidon2In
 /// Initialize the width-24 Poseidon2 permutation using a constructor.
 ///
 /// The constructor will only be called if the permutation has not been initialized yet.
+///
+/// # Errors
+/// Returns `Poseidon2InitError::AlreadyInitialized { width: 24 }` if the permutation was already
+/// initialized (including via lazy initialization from first use).
 pub fn init_poseidon2_24_with<B>(builder: B) -> Result<(), Poseidon2InitError>
 where
     B: FnOnce() -> Poseidon2KoalaBear<24>,
@@ -67,6 +88,16 @@ where
 ///
 /// This must be called before the first use of the permutation. If not called, the default
 /// Plonky3 permutation is used.
+///
+/// # Example
+/// ```no_run
+/// use leansig::init_poseidon2_16_with;
+///
+/// init_poseidon2_16_with(|| {
+///     // ... construct Poseidon2KoalaBear<16> ...
+///     unimplemented!()
+/// }).unwrap();
+/// ```
 pub fn init_poseidon2_16(perm: Poseidon2KoalaBear<16>) -> Result<(), Poseidon2InitError> {
     POSEIDON2_16
         .set(perm)
@@ -76,6 +107,10 @@ pub fn init_poseidon2_16(perm: Poseidon2KoalaBear<16>) -> Result<(), Poseidon2In
 /// Initialize the width-16 Poseidon2 permutation using a constructor.
 ///
 /// The constructor will only be called if the permutation has not been initialized yet.
+///
+/// # Errors
+/// Returns `Poseidon2InitError::AlreadyInitialized { width: 16 }` if the permutation was already
+/// initialized (including via lazy initialization from first use).
 pub fn init_poseidon2_16_with<B>(builder: B) -> Result<(), Poseidon2InitError>
 where
     B: FnOnce() -> Poseidon2KoalaBear<16>,
