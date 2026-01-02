@@ -52,24 +52,26 @@ pub enum Poseidon2InitError {
 ///
 /// # Example
 /// ```no_run
-/// use leansig::init_poseidon2_24_with;
+/// use leansig::init_poseidon2_24;
+/// use p3_koala_bear::Poseidon2KoalaBear;
 ///
 /// // Build your custom Poseidon2(24) permutation here.
 /// // For example, from a spec-aligned constant set.
-/// init_poseidon2_24_with(|| {
-///     // ... construct Poseidon2KoalaBear<24> ...
-///     unimplemented!()
-/// }).unwrap();
+/// let perm: Poseidon2KoalaBear<24> = unimplemented!();
+/// init_poseidon2_24(perm).unwrap();
 /// ```
+///
+/// For a builder-style API, see [`init_poseidon2_24_with`].
 pub fn init_poseidon2_24(perm: Poseidon2KoalaBear<24>) -> Result<(), Poseidon2InitError> {
     POSEIDON2_24
         .set(perm)
         .map_err(|_| Poseidon2InitError::AlreadyInitialized { width: 24 })
 }
 
-/// Initialize the width-24 Poseidon2 permutation using a constructor.
+/// Initialize the width-24 Poseidon2 permutation using a builder.
 ///
-/// The constructor will only be called if the permutation has not been initialized yet.
+/// The builder is only called if the permutation has not been initialized yet.
+/// This function is intended for single-threaded initialization at program startup.
 ///
 /// # Errors
 /// Returns `Poseidon2InitError::AlreadyInitialized { width: 24 }` if the permutation was already
@@ -91,22 +93,24 @@ where
 ///
 /// # Example
 /// ```no_run
-/// use leansig::init_poseidon2_16_with;
+/// use leansig::init_poseidon2_16;
+/// use p3_koala_bear::Poseidon2KoalaBear;
 ///
-/// init_poseidon2_16_with(|| {
-///     // ... construct Poseidon2KoalaBear<16> ...
-///     unimplemented!()
-/// }).unwrap();
+/// let perm: Poseidon2KoalaBear<16> = unimplemented!();
+/// init_poseidon2_16(perm).unwrap();
 /// ```
+///
+/// For a builder-style API, see [`init_poseidon2_16_with`].
 pub fn init_poseidon2_16(perm: Poseidon2KoalaBear<16>) -> Result<(), Poseidon2InitError> {
     POSEIDON2_16
         .set(perm)
         .map_err(|_| Poseidon2InitError::AlreadyInitialized { width: 16 })
 }
 
-/// Initialize the width-16 Poseidon2 permutation using a constructor.
+/// Initialize the width-16 Poseidon2 permutation using a builder.
 ///
-/// The constructor will only be called if the permutation has not been initialized yet.
+/// The builder is only called if the permutation has not been initialized yet.
+/// This function is intended for single-threaded initialization at program startup.
 ///
 /// # Errors
 /// Returns `Poseidon2InitError::AlreadyInitialized { width: 16 }` if the permutation was already
@@ -118,7 +122,6 @@ where
     if POSEIDON2_16.get().is_some() {
         return Err(Poseidon2InitError::AlreadyInitialized { width: 16 });
     }
-
     init_poseidon2_16(builder())
 }
 
