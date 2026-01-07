@@ -230,7 +230,7 @@ where
         perm.permute_mut(&mut state);
     }
 
-    // squeeze
+    // 3. squeeze
     let mut out = [A::ZERO; OUT_LEN];
     let mut out_idx = 0;
     while out_idx < OUT_LEN {
@@ -238,6 +238,7 @@ where
         out[out_idx..out_idx + chunk_size].copy_from_slice(&state[..chunk_size]);
         out_idx += chunk_size;
         if out_idx < OUT_LEN {
+            // no need to permute in last iteration, `state` is local variable
             perm.permute_mut(&mut state);
         }
     }
