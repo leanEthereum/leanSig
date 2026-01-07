@@ -206,7 +206,6 @@ where
     let mut state = [A::ZERO; WIDTH];
     state[rate..].copy_from_slice(capacity_value);
 
-    let extra_elements = (rate - (input.len() % rate)) % rate;
     // Instead of converting the input to a vector, resizing and feeding the data into the
     // sponge, we instead fill in the vector from all chunks until we are left with a non
     // full chunk. We only add to the state, so padded data does not mutate `state` at all.
@@ -221,8 +220,7 @@ where
         perm.permute_mut(&mut state);
     }
     // 2. fill the remainder and extend with zeros
-    let remainder = rate - extra_elements;
-    if remainder > 0 {
+    if !it.remainder().is_empty() {
         for (i, x) in it.remainder().iter().enumerate() {
             state[i] += *x;
         }
