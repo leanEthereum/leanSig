@@ -9,7 +9,7 @@ use crate::TWEAK_SEPARATOR_FOR_TREE_HASH;
 use crate::array::FieldArray;
 use crate::poseidon2_16;
 use crate::poseidon2_24;
-use crate::simd_utils::{pack_array, pack_even_into, pack_fn_into, pack_odd_into, unpack_array};
+use crate::simd_utils::{pack_array, pack_even_into, pack_fn_into, pack_odd_into};
 use crate::symmetric::prf::Pseudorandom;
 use crate::symmetric::tweak_hash::chain;
 use crate::{F, PackedF};
@@ -418,7 +418,7 @@ impl<
                     );
 
                 // Unpack directly to output slice
-                unpack_array(&packed_parents, parents_chunk);
+                PackedF::unpack_into(&packed_parents, FieldArray::as_raw_slice_mut(parents_chunk));
             });
 
         // Handle remainder (elements that don't fill a complete SIMD batch)
@@ -618,7 +618,7 @@ impl<
                 //
                 // Convert from vertical packing back to scalar layout.
                 // Each lane becomes one leaf in the output slice.
-                unpack_array(&packed_leaves, leaves_chunk);
+                PackedF::unpack_into(&packed_leaves, FieldArray::as_raw_slice_mut(leaves_chunk));
             });
 
         // HANDLE REMAINDER EPOCHS
