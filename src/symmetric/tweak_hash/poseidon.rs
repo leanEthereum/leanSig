@@ -213,7 +213,7 @@ where
     // 1. fill in all full chunks and permute
     let mut it = input.chunks_exact(rate);
     for chunk in &mut it {
-        // iterate the chunks
+        // add chunk elements into the first `rate` many elements of the `state`
         for (s, &x) in state.iter_mut().take(rate).zip(chunk) {
             *s += x;
         }
@@ -230,12 +230,12 @@ where
 
     // 3. squeeze
     let mut out = [A::ZERO; OUT_LEN];
-    let mut out_idx = 0;
-    while out_idx < OUT_LEN {
-        let chunk_size = (OUT_LEN - out_idx).min(rate);
-        out[out_idx..out_idx + chunk_size].copy_from_slice(&state[..chunk_size]);
-        out_idx += chunk_size;
-        if out_idx < OUT_LEN {
+    let mut out_index = 0;
+    while out_index < OUT_LEN {
+        let chunk_size = (OUT_LEN - out_index).min(rate);
+        out[out_index..out_index + chunk_size].copy_from_slice(&state[..chunk_size]);
+        out_index += chunk_size;
+        if out_index < OUT_LEN {
             // no need to permute in last iteration, `state` is local variable
             perm.permute_mut(&mut state);
         }
