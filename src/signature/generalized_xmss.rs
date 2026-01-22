@@ -859,10 +859,24 @@ where
         message: &[u8; MESSAGE_LENGTH],
         sig: &Self::Signature,
     ) -> bool {
-        assert!(
+        debug_assert!(
             (epoch as u64) < Self::LIFETIME,
             "Generalized XMSS - Verify: Epoch too large."
         );
+
+        debug_assert!(
+            sig.hashes.len() == IE::DIMENSION,
+            "Generalized XMSS - Verify: Wrong number of hashes."
+        );
+
+        // some sanity checks on inputs: signature has correct structure
+        // and epoch in range. We reject in case a check fails.
+        if (epoch as u64) >= Self::LIFETIME {
+            return false;
+        }
+        if sig.hashes.len() != IE::DIMENSION {
+            return false;
+        }
 
         // first get back the codeword and make sure
         // encoding succeeded with the given randomness.
