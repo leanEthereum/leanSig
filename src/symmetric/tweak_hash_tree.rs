@@ -619,7 +619,7 @@ pub fn hash_tree_verify<TH: TweakableHash>(
 
     // some sanity checks: Tree depth must be at most 32
     // and Position and Path Length must be compatible
-    // we let verification reject of this does not hold.
+    // we let verification reject if this does not hold.
     if depth > 32 {
         return false;
     }
