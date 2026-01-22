@@ -607,15 +607,25 @@ pub fn hash_tree_verify<TH: TweakableHash>(
     let depth = opening.co_path.len();
     let num_leafs: u64 = 1 << depth;
 
-    assert!(
+    debug_assert!(
         depth <= 32,
         "Hash-Tree verify: Tree depth must be at most 32"
     );
 
-    assert!(
+    debug_assert!(
         (position as u64) < num_leafs,
         "Hash-Tree verify: Position and Path Length not compatible"
     );
+
+    // some sanity checks: Tree depth must be at most 32
+    // and Position and Path Length must be compatible
+    // we let verification reject of this does not hold.
+    if depth > 32 {
+        return false;
+    }
+    if (position as u64) >= num_leafs {
+        return false;
+    }
 
     // first hash the leaf to get the node in the bottom layer
     let tweak = TH::tree_tweak(0, position);
