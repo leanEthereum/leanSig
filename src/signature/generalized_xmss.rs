@@ -859,7 +859,6 @@ where
         message: &[u8; MESSAGE_LENGTH],
         sig: &Self::Signature,
     ) -> bool {
-
         debug_assert!(
             (epoch as u64) < Self::LIFETIME,
             "Generalized XMSS - Verify: Epoch too large."
