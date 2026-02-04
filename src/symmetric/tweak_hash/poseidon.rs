@@ -219,12 +219,14 @@ where
         }
         perm.permute_mut(&mut state);
     }
-    // 2. fill the remainder and extend with zeros
+    // 2. Fill the remainder and pad with zeros.
+    // NOTE: This zero-padding is secure for constant-size inputs but may be insecure elsewhere.
     if !it.remainder().is_empty() {
         for (i, x) in it.remainder().iter().enumerate() {
             state[i] += *x;
         }
-        // was a remainder, so permute. No need to mutate `state` as we *add* only anyway
+        // Since we only *add* to the state, positions beyond the remainder remain zero
+        // (their initial value), so no explicit zero-padding is needed.
         perm.permute_mut(&mut state);
     }
 
