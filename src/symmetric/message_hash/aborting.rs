@@ -163,6 +163,7 @@ mod tests {
     use super::*;
     use p3_field::PrimeField32;
     use proptest::prelude::*;
+    use rand::{SeedableRng, rngs::StdRng};
 
     #[test]
     fn test_internal_consistency() {
@@ -263,7 +264,13 @@ mod tests {
         let d_i = 42u64;
         let base_chunks: Vec<u8> = {
             let mut d = d_i;
-            (0..8).map(|_| { let c = (d % 8) as u8; d /= 8; c }).collect()
+            (0..8)
+                .map(|_| {
+                    let c = (d % 8) as u8;
+                    d /= 8;
+                    c
+                })
+                .collect()
         };
 
         // All values A_i in [Q*42, Q*42 + Q-1] should give the same chunks
@@ -271,7 +278,13 @@ mod tests {
             let a_i = 127 * d_i + r;
             let mut d = a_i / 127;
             assert_eq!(d, d_i);
-            let chunks: Vec<u8> = (0..8).map(|_| { let c = (d % 8) as u8; d /= 8; c }).collect();
+            let chunks: Vec<u8> = (0..8)
+                .map(|_| {
+                    let c = (d % 8) as u8;
+                    d /= 8;
+                    c
+                })
+                .collect();
             assert_eq!(chunks, base_chunks);
         }
     }
@@ -307,6 +320,77 @@ mod tests {
         let c1 = r1.unwrap();
         let c2 = r2.unwrap();
         assert_ne!(c1, c2, "Different messages should produce different chunks");
+    }
+
+    #[test]
+    fn test_abort_rate() {
+        // Parameters chosen so each FE aborts with probability ≈ 1/2:
+        // w=8, z=3, Q=2080768, so Q*w^z = 2080768 * 512 = 1065353216 ≈ p/2.
+        // With 3 useful FEs (DIMENSION=9, Z=3), success prob ≈ (1/2)^3 = 1/8.
+        // Expected attempts per success ≈ 8.
+        type HighAbortMH = AbortingHypercubeMessageHash<5, 5, 3, 9, 8, 3, 2080768, 2, 9>;
+        HighAbortMH::internal_consistency_check();
+
+        let mut rng = StdRng::seed_from_u64(0);
+        let parameter: FieldArray<5> = FieldArray(rng.random());
+        let message: [u8; 32] = rng.random();
+
+        const NUM_TRIALS: usize = 1000;
+        let mut total_attempts: usize = 0;
+
+        for _ in 0..NUM_TRIALS {
+            let mut attempts = 0;
+            loop {
+                attempts += 1;
+                let randomness = HighAbortMH::rand(&mut rng);
+                if let Ok(chunks) = HighAbortMH::apply(&parameter, 0, &randomness, &message) {
+                    assert_eq!(chunks.len(), 9);
+                    assert!(chunks.iter().all(|&c| c < 8));
+                    break;
+                }
+                assert!(attempts < 1000, "too many attempts, something is wrong");
+            }
+            total_attempts += attempts;
+        }
+
+        let avg = total_attempts as f64 / NUM_TRIALS as f64;
+
+        // Expected ≈ 8
+        assert!(avg >= 7.5 && avg <= 8.5,);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_output_uniformity() {
+        // Use a tiny output space: base 4, dimension 2 (= 4^2 = 16 possible messages).
+        // Check that each of the 16 possible outputs appears with roughly equal frequency.
+        // Q = 66585201, so Q * 4^2 = 1065363216 ≈ p/2 (abort prob ≈ 1/2 per FE).
+        type SmallMH = AbortingHypercubeMessageHash<5, 5, 1, 2, 4, 2, 66585201, 2, 9>;
+        SmallMH::internal_consistency_check();
+
+        let mut rng = StdRng::seed_from_u64(42);
+        let parameter: FieldArray<5> = FieldArray(rng.random());
+        let message: [u8; 32] = rng.random();
+
+        const NUM_SAMPLES: usize = 1000_000;
+        const NUM_OUTPUTS: usize = 16; // 4^2
+        let mut counts = [0usize; NUM_OUTPUTS];
+        let mut successes = 0;
+
+        while successes < NUM_SAMPLES {
+            let randomness = SmallMH::rand(&mut rng);
+            if let Ok(chunks) = SmallMH::apply(&parameter, 0, &randomness, &message) {
+                let idx = chunks[0] as usize + 4 * chunks[1] as usize;
+                counts[idx] += 1;
+                successes += 1;
+            }
+        }
+
+        for c in counts {
+            let left = (NUM_SAMPLES / NUM_OUTPUTS) * 99 / 100; // 99% of expected
+            let right = (NUM_SAMPLES / NUM_OUTPUTS) * 101 / 100; // 101% of expected
+            assert!((left..=right).contains(&c),);
+        }
     }
 
     proptest! {
