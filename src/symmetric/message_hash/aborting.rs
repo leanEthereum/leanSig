@@ -328,14 +328,14 @@ mod tests {
         // w=8, z=3, Q=2080768, so Q*w^z = 2080768 * 512 = 1065353216 ≈ p/2.
         // With 3 useful FEs (DIMENSION=9, Z=3), success prob ≈ (1/2)^3 = 1/8.
         // Expected attempts per success ≈ 8.
-        type HighAbortMH = AbortingHypercubeMessageHash<5, 5, 3, 9, 8, 3, 2080768, 2, 9>;
+        type HighAbortMH = AbortingHypercubeMessageHash<5, 5, 3, 9, 8, 3, 2_080_768, 2, 9>;
+        const NUM_TRIALS: usize = 1000;
+
         HighAbortMH::internal_consistency_check();
 
         let mut rng = StdRng::seed_from_u64(0);
         let parameter: FieldArray<5> = FieldArray(rng.random());
         let message: [u8; 32] = rng.random();
-
-        const NUM_TRIALS: usize = 1000;
         let mut total_attempts: usize = 0;
 
         for _ in 0..NUM_TRIALS {
@@ -356,24 +356,24 @@ mod tests {
         let avg = total_attempts as f64 / NUM_TRIALS as f64;
 
         // Expected ≈ 8
-        assert!(avg >= 7.5 && avg <= 8.5,);
+        assert!((7.5..=8.5).contains(&avg));
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "slow: 1M samples"]
     fn test_output_uniformity() {
         // Use a tiny output space: base 4, dimension 2 (= 4^2 = 16 possible messages).
         // Check that each of the 16 possible outputs appears with roughly equal frequency.
-        // Q = 66585201, so Q * 4^2 = 1065363216 ≈ p/2 (abort prob ≈ 1/2 per FE).
-        type SmallMH = AbortingHypercubeMessageHash<5, 5, 1, 2, 4, 2, 66585201, 2, 9>;
+        // Q = 66_585_201, so Q * 4^2 = 1_065_363_216 ≈ p/2 (abort prob ≈ 1/2 per FE).
+        type SmallMH = AbortingHypercubeMessageHash<5, 5, 1, 2, 4, 2, 66_585_201, 2, 9>;
+        const NUM_SAMPLES: usize = 1_000_000;
+        const NUM_OUTPUTS: usize = 16; // 4^2
+
         SmallMH::internal_consistency_check();
 
         let mut rng = StdRng::seed_from_u64(42);
         let parameter: FieldArray<5> = FieldArray(rng.random());
         let message: [u8; 32] = rng.random();
-
-        const NUM_SAMPLES: usize = 1000_000;
-        const NUM_OUTPUTS: usize = 16; // 4^2
         let mut counts = [0usize; NUM_OUTPUTS];
         let mut successes = 0;
 
