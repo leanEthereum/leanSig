@@ -1009,6 +1009,9 @@ impl<PRF: Pseudorandom, IE: IncomparableEncoding, TH: TweakableHash, const LOG_L
 {
 }
 
+/// Instantiations of the generalized XMSS signature scheme based on the
+/// aborting hypercube message hash (rejection sampling)
+pub mod instantiations_aborting;
 /// Instantiations of the generalized XMSS signature scheme based on Poseidon2
 pub mod instantiations_poseidon;
 /// Instantiations of the generalized XMSS signature scheme based on the
@@ -1023,6 +1026,7 @@ mod tests {
         symmetric::{
             message_hash::{
                 MessageHash,
+                aborting::AbortingHypercubeMessageHash,
                 poseidon::{PoseidonMessageHash, PoseidonMessageHashW1},
             },
             prf::shake_to_field::ShakePRFtoF,
@@ -1139,6 +1143,25 @@ mod tests {
 
         test_signature_scheme_correctness::<Sig>(2, 0, Sig::LIFETIME as usize);
         test_signature_scheme_correctness::<Sig>(19, 0, Sig::LIFETIME as usize);
+    }
+
+    #[test]
+    pub fn test_aborting_target_sum() {
+        // KoalaBear: p = 127 * 8^8 + 1, so w=8, z=8, Q=127
+        type PRF = ShakePRFtoF<7, 5>;
+        type TH = PoseidonTweakHash<5, 7, 2, 9, 64>;
+        type MH = AbortingHypercubeMessageHash<5, 5, 8, 64, 8, 8, 127, 2, 9>;
+        const TARGET_SUM: usize = MH::DIMENSION * (MH::BASE - 1) / 2; // 224
+        type IE = TargetSumEncoding<MH, TARGET_SUM>;
+        const LOG_LIFETIME: usize = 6;
+        type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
+
+        Sig::internal_consistency_check();
+
+        test_signature_scheme_correctness::<Sig>(2, 0, Sig::LIFETIME as usize);
+        test_signature_scheme_correctness::<Sig>(19, 0, Sig::LIFETIME as usize);
+        test_signature_scheme_correctness::<Sig>(0, 0, Sig::LIFETIME as usize);
+        test_signature_scheme_correctness::<Sig>(11, 0, Sig::LIFETIME as usize);
     }
 
     #[test]

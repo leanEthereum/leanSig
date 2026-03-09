@@ -173,7 +173,12 @@ where
 
         // turn the field elements into an element in the part
         // of the hypercube that we care about.
-        Ok(map_into_hypercube_part::<DIMENSION, BASE, FINAL_LAYER, POS_OUTPUT_LEN_FE>(&pos_outputs))
+        Ok(map_into_hypercube_part::<
+            DIMENSION,
+            BASE,
+            FINAL_LAYER,
+            POS_OUTPUT_LEN_FE,
+        >(&pos_outputs))
     }
 
     #[cfg(test)]

@@ -5,7 +5,7 @@ use thiserror::Error;
 
 /// Specific errors that can occur during target sum encoding.
 #[derive(Debug, Error)]
-pub enum TargetSumError<E: Debug> {
+pub enum TargetSumError<E> {
     /// Returned when the generated chunks do not sum to the required target.
     #[error("Target sum mismatch: expected {expected}, but got {actual}.")]
     Mismatch { expected: usize, actual: usize },
