@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use rand::Rng;
 
 use crate::MESSAGE_LENGTH;
@@ -14,6 +16,7 @@ use crate::serialization::Serializable;
 pub trait MessageHash {
     type Parameter: Clone + Serializable;
     type Randomness: Serializable;
+    type Error: Debug;
 
     /// number of entries in a hash
     const DIMENSION: usize;
@@ -33,7 +36,7 @@ pub trait MessageHash {
         epoch: u32,
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
-    ) -> Vec<u8>;
+    ) -> Result<Vec<u8>, Self::Error>;
 
     /// Function to check internal consistency of any given parameters
     /// For testing only, and expected to panic if something is wrong.
@@ -41,5 +44,6 @@ pub trait MessageHash {
     fn internal_consistency_check();
 }
 
+pub mod aborting;
 pub mod poseidon;
 pub mod top_level_poseidon;

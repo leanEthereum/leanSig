@@ -1,3 +1,5 @@
+use std::convert::Infallible;
+
 use num_bigint::BigUint;
 use p3_field::PrimeCharacteristicRing;
 use p3_field::PrimeField;
@@ -124,6 +126,8 @@ where
 
     type Randomness = FieldArray<RAND_LEN>;
 
+    type Error = Infallible;
+
     const DIMENSION: usize = DIMENSION;
 
     const BASE: usize = BASE;
@@ -137,7 +141,7 @@ where
         epoch: u32,
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
-    ) -> Vec<u8> {
+    ) -> Result<Vec<u8>, Infallible> {
         let perm = poseidon2_24();
 
         // first, encode the message and the epoch as field elements
@@ -169,7 +173,7 @@ where
 
         // turn the field elements into an element in the part
         // of the hypercube that we care about.
-        map_into_hypercube_part::<DIMENSION, BASE, FINAL_LAYER, POS_OUTPUT_LEN_FE>(&pos_outputs)
+        Ok(map_into_hypercube_part::<DIMENSION, BASE, FINAL_LAYER, POS_OUTPUT_LEN_FE>(&pos_outputs))
     }
 
     #[cfg(test)]
@@ -266,7 +270,7 @@ mod tests {
         let randomness = MH::rand(&mut rng);
 
         MH::internal_consistency_check();
-        let hash: Vec<u8> = MH::apply(&parameter, epoch, &randomness, &message);
+        let hash: Vec<u8> = MH::apply(&parameter, epoch, &randomness, &message).unwrap();
 
         // we also want that the output is in the relevant part of the hypercube,
         // i.e., we want that the output is in some layer between 0 and FINAL_LAYER
@@ -299,7 +303,7 @@ mod tests {
             let parameter = FieldArray(rng.random());
             let randomness = MH::rand(&mut rng);
 
-            let hash = MH::apply(&parameter, epoch, &randomness, &message);
+            let hash = MH::apply(&parameter, epoch, &randomness, &message).unwrap();
 
             // Length must match dimension
             prop_assert_eq!(hash.len(), DIMENSION);

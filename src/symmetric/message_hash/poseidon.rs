@@ -1,3 +1,5 @@
+use std::convert::Infallible;
+
 use num_bigint::BigUint;
 use p3_field::PrimeCharacteristicRing;
 use p3_field::PrimeField;
@@ -90,6 +92,37 @@ fn decode_to_chunks<const DIMENSION: usize, const BASE: usize, const HASH_LEN_FE
     })
 }
 
+pub(crate) fn poseidon_message_hash_fe<
+    const PARAMETER_LEN: usize,
+    const RAND_LEN_FE: usize,
+    const HASH_LEN_FE: usize,
+    const TWEAK_LEN_FE: usize,
+    const MSG_LEN_FE: usize,
+>(
+    parameter: &FieldArray<PARAMETER_LEN>,
+    epoch: u32,
+    randomness: &FieldArray<RAND_LEN_FE>,
+    message: &[u8; MESSAGE_LENGTH],
+) -> [F; HASH_LEN_FE] {
+    // Get the default, pre-configured Poseidon2 instance from Plonky3.
+    let perm = poseidon2_24();
+
+    // first, encode the message and the epoch as field elements
+    let message_fe = encode_message::<MSG_LEN_FE>(message);
+    let epoch_fe = encode_epoch::<TWEAK_LEN_FE>(epoch);
+
+    // now, we hash randomness, parameters, epoch, message using PoseidonCompress
+    let combined_input_vec: Vec<F> = randomness
+        .iter()
+        .chain(parameter.iter())
+        .chain(epoch_fe.iter())
+        .chain(message_fe.iter())
+        .copied()
+        .collect();
+
+    poseidon_compress::<F, _, 24, HASH_LEN_FE>(&perm, &combined_input_vec)
+}
+
 /// A message hash implemented using Poseidon2
 ///
 /// Note: PARAMETER_LEN, RAND_LEN, TWEAK_LEN_FE, MSG_LEN_FE, and HASH_LEN_FE
@@ -135,6 +168,8 @@ where
 
     type Randomness = FieldArray<RAND_LEN_FE>;
 
+    type Error = Infallible;
+
     const DIMENSION: usize = DIMENSION;
 
     const BASE: usize = BASE;
@@ -148,27 +183,16 @@ where
         epoch: u32,
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
-    ) -> Vec<u8> {
-        // Get the default, pre-configured Poseidon2 instance from Plonky3.
-        let perm = poseidon2_24();
+    ) -> Result<Vec<u8>, Infallible> {
+        let hash_fe = poseidon_message_hash_fe::<
+            PARAMETER_LEN,
+            RAND_LEN_FE,
+            HASH_LEN_FE,
+            TWEAK_LEN_FE,
+            MSG_LEN_FE,
+        >(parameter, epoch, randomness, message);
 
-        // first, encode the message and the epoch as field elements
-        let message_fe = encode_message::<MSG_LEN_FE>(message);
-        let epoch_fe = encode_epoch::<TWEAK_LEN_FE>(epoch);
-
-        // now, we hash randomness, parameters, epoch, message using PoseidonCompress
-        let combined_input_vec: Vec<F> = randomness
-            .iter()
-            .chain(parameter.iter())
-            .chain(epoch_fe.iter())
-            .chain(message_fe.iter())
-            .copied()
-            .collect();
-
-        let hash_fe = poseidon_compress::<F, _, 24, HASH_LEN_FE>(&perm, &combined_input_vec);
-
-        // decode field elements into chunks and return them
-        decode_to_chunks::<DIMENSION, BASE, HASH_LEN_FE>(&hash_fe).to_vec()
+        Ok(decode_to_chunks::<DIMENSION, BASE, HASH_LEN_FE>(&hash_fe).to_vec())
     }
 
     #[cfg(test)]
@@ -249,7 +273,7 @@ mod tests {
         let randomness = PoseidonMessageHash445::rand(&mut rng);
 
         PoseidonMessageHash445::internal_consistency_check();
-        PoseidonMessageHash445::apply(&parameter, epoch, &randomness, &message);
+        PoseidonMessageHash445::apply(&parameter, epoch, &randomness, &message).unwrap();
     }
 
     #[test]
@@ -264,7 +288,7 @@ mod tests {
         let randomness = PoseidonMessageHashW1::rand(&mut rng);
 
         PoseidonMessageHashW1::internal_consistency_check();
-        PoseidonMessageHashW1::apply(&parameter, epoch, &randomness, &message);
+        PoseidonMessageHashW1::apply(&parameter, epoch, &randomness, &message).unwrap();
     }
 
     #[test]
@@ -628,8 +652,8 @@ mod tests {
             let randomness = FieldArray(rand_arr);
 
             // call apply twice to check determinism
-            let result1 = PoseidonMessageHash445::apply(&parameter, epoch, &randomness, &message);
-            let result2 = PoseidonMessageHash445::apply(&parameter, epoch, &randomness, &message);
+            let result1 = PoseidonMessageHash445::apply(&parameter, epoch, &randomness, &message).unwrap();
+            let result2 = PoseidonMessageHash445::apply(&parameter, epoch, &randomness, &message).unwrap();
 
             // check determinism
             prop_assert_eq!(&result1, &result2);
@@ -648,7 +672,7 @@ mod tests {
                 epoch.wrapping_add(1),
                 &randomness,
                 &message,
-            );
+            ).unwrap();
             prop_assert_ne!(&result1[..], &other_epoch[..]);
         }
 
