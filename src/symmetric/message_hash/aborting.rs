@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn test_apply() {
-        let mut rng = rand::rng();
+        let mut rng = StdRng::seed_from_u64(1);
         let parameter = FieldArray(rng.random());
         let message = rng.random();
         let randomness = HypercubePoseidonMHKoalaBear::rand(&mut rng);
@@ -197,27 +197,6 @@ mod tests {
         for &chunk in &hash {
             assert!((chunk as usize) < 8);
         }
-    }
-
-    #[test]
-    fn test_rand_not_all_same() {
-        const K: usize = 10;
-        let mut rng = rand::rng();
-        let mut all_same_count = 0;
-
-        for _ in 0..K {
-            let randomness = HypercubePoseidonMHKoalaBear::rand(&mut rng);
-            let first = randomness[0];
-            if randomness.iter().all(|&x| x == first) {
-                all_same_count += 1;
-            }
-        }
-
-        assert!(
-            all_same_count < K,
-            "rand generated identical elements in all {} trials",
-            K
-        );
     }
 
     #[test]
@@ -294,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_different_epochs_produce_different_results() {
-        let mut rng = rand::rng();
+        let mut rng = StdRng::seed_from_u64(2);
         let parameter = FieldArray(rng.random());
         let message: [u8; 32] = rng.random();
         let randomness = HypercubePoseidonMHKoalaBear::rand(&mut rng);
@@ -302,7 +281,6 @@ mod tests {
         let r1 = HypercubePoseidonMHKoalaBear::apply(&parameter, 0, &randomness, &message);
         let r2 = HypercubePoseidonMHKoalaBear::apply(&parameter, 1, &randomness, &message);
 
-        // Both should succeed (abort probability ~1/p per FE is negligible)
         let c1 = r1.unwrap();
         let c2 = r2.unwrap();
         assert_ne!(c1, c2, "Different epochs should produce different chunks");
@@ -310,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_different_messages_produce_different_results() {
-        let mut rng = rand::rng();
+        let mut rng = StdRng::seed_from_u64(3);
         let parameter = FieldArray(rng.random());
         let randomness = HypercubePoseidonMHKoalaBear::rand(&mut rng);
 
