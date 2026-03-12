@@ -66,6 +66,9 @@ where
         FieldArray(rng.random())
     }
 
+    /// Hashes (public_parameter, epoch, randomness, message), and return an error if the resulting outputs does
+    /// not pass the rejection sampling check (in order to ensure uniformity of the output distribution), i.e.
+    /// if any of the first DIMENSION.div_ceil(Z) output field elements is >= Q * w^z.
     fn apply(
         parameter: &Self::Parameter,
         epoch: u32,
