@@ -92,6 +92,8 @@ fn decode_to_chunks<const DIMENSION: usize, const BASE: usize, const HASH_LEN_FE
     })
 }
 
+/// Hashes the public parameter, the epoch, the randomness, and the message using Poseidon2 over
+/// 24 field elements, in compression mode. (the total input length must be at most 24)
 pub(crate) fn poseidon_message_hash_fe<
     const PARAMETER_LEN: usize,
     const RAND_LEN_FE: usize,
