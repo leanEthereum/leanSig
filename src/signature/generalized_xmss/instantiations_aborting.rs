@@ -20,7 +20,7 @@ pub mod lifetime_2_to_the_6 {
     const DIMENSION: usize = 64;
     const BASE: usize = 8;
     const Z: usize = 8;
-    const Q_VAL: usize = 127;
+    const Q: usize = 127;
 
     // TODO
     const PARAMETER_LEN: usize = 5;
@@ -39,7 +39,7 @@ pub mod lifetime_2_to_the_6 {
         DIMENSION,
         BASE,
         Z,
-        Q_VAL,
+        Q,
         TWEAK_LEN_FE,
         MSG_LEN_FE,
     >;
