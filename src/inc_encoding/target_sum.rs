@@ -1,14 +1,18 @@
-use crate::{MESSAGE_LENGTH, symmetric::message_hash::MessageHash};
-
 use super::IncomparableEncoding;
+use crate::{MESSAGE_LENGTH, symmetric::message_hash::MessageHash};
+use std::fmt::Debug;
 use thiserror::Error;
 
 /// Specific errors that can occur during target sum encoding.
 #[derive(Debug, Error)]
-pub enum TargetSumError {
+pub enum TargetSumError<E> {
     /// Returned when the generated chunks do not sum to the required target.
     #[error("Target sum mismatch: expected {expected}, but got {actual}.")]
     Mismatch { expected: usize, actual: usize },
+
+    /// Returned when the underlying message hash fails.
+    #[error("Hash error: {0:?}")]
+    HashError(E),
 }
 
 /// Incomparable Encoding Scheme based on Target Sums,
@@ -36,7 +40,7 @@ impl<MH: MessageHash, const TARGET_SUM: usize> IncomparableEncoding
 
     type Randomness = MH::Randomness;
 
-    type Error = TargetSumError;
+    type Error = TargetSumError<MH::Error>;
 
     const DIMENSION: usize = MH::DIMENSION;
 
@@ -58,7 +62,8 @@ impl<MH: MessageHash, const TARGET_SUM: usize> IncomparableEncoding
         epoch: u32,
     ) -> Result<Vec<u8>, Self::Error> {
         // apply the message hash first to get chunks
-        let chunks = MH::apply(parameter, epoch, randomness, message);
+        let chunks =
+            MH::apply(parameter, epoch, randomness, message).map_err(TargetSumError::HashError)?;
         let sum: u32 = chunks.iter().map(|&x| x as u32).sum();
         // only output something if the chunks sum to the target sum
         if sum as usize == TARGET_SUM {
@@ -93,7 +98,6 @@ mod tests {
     use super::*;
     use crate::F;
     use crate::array::FieldArray;
-    use crate::symmetric::message_hash::MessageHash;
     use crate::symmetric::message_hash::poseidon::PoseidonMessageHash445;
     use p3_field::PrimeField32;
     use proptest::prelude::*;
@@ -199,7 +203,7 @@ mod tests {
             let parameter = FieldArray(parameter_arr);
 
             // compute expected sum from underlying message hash
-            let hash_chunks = PoseidonMessageHash445::apply(&parameter, epoch, &randomness, &message);
+            let hash_chunks = PoseidonMessageHash445::apply(&parameter, epoch, &randomness, &message).unwrap();
             let hash_sum: usize = hash_chunks.iter().map(|&x| x as usize).sum();
 
             // call encode twice to check determinism
