@@ -110,29 +110,29 @@ where
 
     #[cfg(test)]
     fn internal_consistency_check() {
-        const{
-        // Check that Poseidon of width 24 is enough
-        assert!(
-            PARAMETER_LEN + RAND_LEN_FE + TWEAK_LEN_FE + MSG_LEN_FE <= 24,
-            "Poseidon of width 24 is not enough"
-        );
-        assert!(HASH_LEN_FE <= 24, "Poseidon of width 24 is not enough");
+        const {
+            // Check that Poseidon of width 24 is enough
+            assert!(
+                PARAMETER_LEN + RAND_LEN_FE + TWEAK_LEN_FE + MSG_LEN_FE <= 24,
+                "Poseidon of width 24 is not enough"
+            );
+            assert!(HASH_LEN_FE <= 24, "Poseidon of width 24 is not enough");
 
-        // Check that we have enough hash output field elements
-        assert!(
-            HASH_LEN_FE >= DIMENSION.div_ceil(Z),
-            "Not enough hash output field elements for the requested dimension"
-        );
-        assert!(
-            PARAMETER_LEN + RAND_LEN_FE + TWEAK_LEN_FE + MSG_LEN_FE >= HASH_LEN_FE,
-            "Input shorter than requested output"
-        );
+            // Check that we have enough hash output field elements
+            assert!(
+                HASH_LEN_FE >= DIMENSION.div_ceil(Z),
+                "Not enough hash output field elements for the requested dimension"
+            );
+            assert!(
+                PARAMETER_LEN + RAND_LEN_FE + TWEAK_LEN_FE + MSG_LEN_FE >= HASH_LEN_FE,
+                "Input shorter than requested output"
+            );
 
-        // Base check
-        assert!(
-            Self::BASE <= 1 << 8,
-            "Aborting Hypercube Message Hash: Base must be at most 2^8"
-        );
+            // Base check
+            assert!(
+                Self::BASE <= 1 << 8,
+                "Aborting Hypercube Message Hash: Base must be at most 2^8"
+            );
         }
 
         // Check that Q * w^z fits within the field
