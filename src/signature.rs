@@ -203,14 +203,6 @@ pub trait SignatureScheme {
         message: &[u8; MESSAGE_LENGTH],
         sig: &Self::Signature,
     ) -> bool;
-
-    /// A test-only function to assert that all internal parameters chosen for the
-    /// signature scheme are valid and compatible.
-    ///
-    /// ### Panics
-    /// This function will panic if any of the internal consistency checks fail.
-    #[cfg(test)]
-    fn internal_consistency_check();
 }
 
 pub mod generalized_xmss;

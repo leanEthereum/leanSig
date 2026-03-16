@@ -62,11 +62,6 @@ pub mod lifetime_2_to_the_6 {
         use super::SIGAbortingLifetime6Dim64Base8;
 
         #[test]
-        pub fn test_internal_consistency() {
-            SIGAbortingLifetime6Dim64Base8::internal_consistency_check();
-        }
-
-        #[test]
         pub fn test_correctness() {
             test_signature_scheme_correctness::<SIGAbortingLifetime6Dim64Base8>(
                 2,

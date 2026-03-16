@@ -61,6 +61,18 @@ impl<MH: MessageHash, const TARGET_SUM: usize> IncomparableEncoding
         randomness: &Self::Randomness,
         epoch: u32,
     ) -> Result<Vec<u8>, Self::Error> {
+        const {
+            // base and dimension must not be too large
+            assert!(
+                MH::BASE <= 1 << 8,
+                "Target Sum Encoding: Base must be at most 2^8"
+            );
+            assert!(
+                MH::DIMENSION <= 1 << 8,
+                "Target Sum Encoding: Dimension must be at most 2^8"
+            );
+        }
+
         // apply the message hash first to get chunks
         let chunks =
             MH::apply(parameter, epoch, randomness, message).map_err(TargetSumError::HashError)?;
@@ -75,22 +87,6 @@ impl<MH: MessageHash, const TARGET_SUM: usize> IncomparableEncoding
             })
         }
     }
-
-    #[cfg(test)]
-    fn internal_consistency_check() {
-        // base and dimension must not be too large
-        assert!(
-            Self::BASE <= 1 << 8,
-            "Target Sum Encoding: Base must be at most 2^8"
-        );
-        assert!(
-            Self::DIMENSION <= 1 << 8,
-            "Target Sum Encoding: Dimension must be at most 2^8"
-        );
-
-        // also check internal consistency of message hash
-        MH::internal_consistency_check();
-    }
 }
 
 #[cfg(test)]
@@ -104,11 +100,6 @@ mod tests {
 
     const TEST_TARGET_SUM: usize = 115;
     type TestTargetSumEncoding = TargetSumEncoding<PoseidonMessageHash445, TEST_TARGET_SUM>;
-
-    #[test]
-    fn test_internal_consistency() {
-        TestTargetSumEncoding::internal_consistency_check();
-    }
 
     #[test]
     fn test_successful_encoding_fixed_message() {

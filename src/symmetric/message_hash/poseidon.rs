@@ -186,6 +186,51 @@ where
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
     ) -> Result<Vec<u8>, Infallible> {
+        const {
+            // Check that Poseidon of width 24 is enough
+            assert!(
+                PARAMETER_LEN + TWEAK_LEN_FE + RAND_LEN_FE + MSG_LEN_FE <= 24,
+                "Poseidon of width 24 is not enough"
+            );
+            assert!(HASH_LEN_FE <= 24, "Poseidon of width 24 is not enough");
+
+            // Base and dimension check
+            assert!(
+                BASE <= 1 << 8,
+                "Poseidon Message Hash: Base must be at most 2^8"
+            );
+            assert!(
+                DIMENSION <= 1 << 8,
+                "Poseidon Message Hash: Dimension must be at most 2^8"
+            );
+
+            // how many bits can be represented by one field element: floor(log2(ORDER))
+            let bits_per_fe = F::ORDER_U64.ilog2() as usize;
+
+            // Check that we have enough bits to encode message
+            assert!(
+                bits_per_fe * MSG_LEN_FE >= 8 * MESSAGE_LENGTH,
+                "Poseidon Message Hash: Parameter mismatch: not enough field elements to encode the message"
+            );
+
+            // Check that we have enough bits to encode tweak
+            // Epoch is a u32, and we have one domain separator byte
+            assert!(
+                bits_per_fe * TWEAK_LEN_FE >= 40,
+                "Poseidon Message Hash: Parameter mismatch: not enough field elements to encode the epoch tweak"
+            );
+
+            // Check that decoding from field elements to chunks can be done
+            // injectively, i.e., we have enough chunks
+            // chunk_size = ceil(log2(BASE))
+            assert!(BASE > 1, "Poseidon Message Hash: BASE must be > 1");
+            let chunk_size = (usize::BITS - (BASE - 1).leading_zeros()) as usize;
+            assert!(
+                bits_per_fe * HASH_LEN_FE <= DIMENSION * chunk_size,
+                "Poseidon Message Hash: Parameter mismatch: not enough bits to decode the hash"
+            );
+        }
+
         let hash_fe = poseidon_message_hash_fe::<
             PARAMETER_LEN,
             RAND_LEN_FE,
@@ -195,56 +240,6 @@ where
         >(parameter, epoch, randomness, message);
 
         Ok(decode_to_chunks::<DIMENSION, BASE, HASH_LEN_FE>(&hash_fe).to_vec())
-    }
-
-    #[cfg(test)]
-    fn internal_consistency_check() {
-        // Check that Poseidon of width 24 is enough
-        // Note: This block should be changed if we decide to support other Poseidon
-        // instances. Currently we use state of width 24 and pad with 0s.
-
-        assert!(
-            PARAMETER_LEN + TWEAK_LEN_FE + RAND_LEN_FE + MSG_LEN_FE <= 24,
-            "Poseidon of width 24 is not enough"
-        );
-        assert!(HASH_LEN_FE <= 24, "Poseidon of width 24 is not enough");
-
-        // Base and dimension check
-        assert!(
-            Self::BASE <= 1 << 8,
-            "Poseidon Message Hash: Base must be at most 2^8"
-        );
-        assert!(
-            Self::DIMENSION <= 1 << 8,
-            "Poseidon Message Hash: Dimension must be at most 2^8"
-        );
-
-        // how many bits can be represented by one field element
-        let bits_per_fe = f64::floor(f64::log2(F::ORDER_U64 as f64));
-
-        // Check that we have enough bits to encode message
-        let message_fe_bits = bits_per_fe * f64::from(MSG_LEN_FE as u32);
-        assert!(
-            message_fe_bits >= f64::from((8_u32) * (MESSAGE_LENGTH as u32)),
-            "Poseidon Message Hash: Parameter mismatch: not enough field elements to encode the message"
-        );
-
-        // Check that we have enough bits to encode tweak
-        // Epoch is a u32, and we have one domain separator byte
-        let tweak_fe_bits = bits_per_fe * f64::from(TWEAK_LEN_FE as u32);
-        assert!(
-            tweak_fe_bits >= f64::from(32 + 8_u32),
-            "Poseidon Message Hash: Parameter mismatch: not enough field elements to encode the epoch tweak"
-        );
-
-        // Check that decoding from field elements to chunks can be done
-        // injectively, i.e., we have enough chunks
-        let hash_bits = bits_per_fe * f64::from(HASH_LEN_FE as u32);
-        let chunk_size = f64::ceil(f64::log2(Self::BASE as f64)) as usize;
-        assert!(
-            hash_bits <= f64::from((DIMENSION * chunk_size) as u32),
-            "Poseidon Message Hash: Parameter mismatch: not enough bits to decode the hash"
-        );
     }
 }
 
@@ -274,7 +269,6 @@ mod tests {
         let epoch = 13;
         let randomness = PoseidonMessageHash445::rand(&mut rng);
 
-        PoseidonMessageHash445::internal_consistency_check();
         PoseidonMessageHash445::apply(&parameter, epoch, &randomness, &message).unwrap();
     }
 
@@ -289,7 +283,6 @@ mod tests {
         let epoch = 13;
         let randomness = PoseidonMessageHashW1::rand(&mut rng);
 
-        PoseidonMessageHashW1::internal_consistency_check();
         PoseidonMessageHashW1::apply(&parameter, epoch, &randomness, &message).unwrap();
     }
 
@@ -575,7 +568,7 @@ mod tests {
         // input_uint = (p - 1) + (p - 1) * p + (p - 1) * p^2
         //           = (p^2 + p + 1) * (p - 1)
         //
-        // We’ll expand it:
+        // We'll expand it:
         // = (p - 1) * (p^2 + p + 1)
         // = p^3 - 1
 

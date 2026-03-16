@@ -37,11 +37,6 @@ pub trait MessageHash {
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
     ) -> Result<Vec<u8>, Self::Error>;
-
-    /// Function to check internal consistency of any given parameters
-    /// For testing only, and expected to panic if something is wrong.
-    #[cfg(test)]
-    fn internal_consistency_check();
 }
 
 pub mod aborting;

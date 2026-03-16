@@ -658,6 +658,25 @@ where
         activation_epoch: usize,
         num_active_epochs: usize,
     ) -> (Self::PublicKey, Self::SecretKey) {
+        const {
+            // assert BASE and DIMENSION are small enough to make sure that we can fit
+            // pos_in_chain and chain_index in u8.
+            assert!(
+                IE::BASE <= 1 << 8,
+                "Generalized XMSS: Encoding base too large, must be at most 2^8"
+            );
+            assert!(
+                IE::DIMENSION <= 1 << 8,
+                "Generalized XMSS: Encoding dimension too large, must be at most 2^8"
+            );
+
+            // LOG_LIFETIME needs to be even, so that we can use the top-bottom tree approach
+            assert!(
+                LOG_LIFETIME.is_multiple_of(2),
+                "Generalized XMSS: LOG_LIFETIME must be multiple of two"
+            );
+        }
+
         // checks for `activation_epoch` and `num_active_epochs`
         assert!(
             activation_epoch + num_active_epochs <= Self::LIFETIME as usize,
@@ -921,33 +940,6 @@ where
             &sig.path,
         )
     }
-
-    #[cfg(test)]
-    fn internal_consistency_check() {
-        // we check consistency of all internally used components
-        // namely, PRF, incomparable encoding, and tweak hash
-        PRF::internal_consistency_check();
-        IE::internal_consistency_check();
-        TH::internal_consistency_check();
-
-        // assert BASE and DIMENSION are small enough to make sure that we can fit
-        // pos_in_chain and chain_index in u8.
-
-        assert!(
-            IE::BASE <= 1 << 8,
-            "Generalized XMSS: Encoding base too large, must be at most 2^8"
-        );
-        assert!(
-            IE::DIMENSION <= 1 << 8,
-            "Generalized XMSS: Encoding dimension too large, must be at most 2^8"
-        );
-
-        // LOG_LIFETIME needs to be even, so that we can use the top-bottom tree approach
-        assert!(
-            LOG_LIFETIME.is_multiple_of(2),
-            "Generalized XMSS: LOG_LIFETIME must be multiple of two"
-        );
-    }
 }
 
 impl<TH: TweakableHash> Encode for GeneralizedXMSSPublicKey<TH> {
@@ -1061,8 +1053,6 @@ mod tests {
         const LOG_LIFETIME: usize = 6;
         type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
-        Sig::internal_consistency_check();
-
         test_signature_scheme_correctness::<Sig>(2, 0, Sig::LIFETIME as usize);
         test_signature_scheme_correctness::<Sig>(19, 0, Sig::LIFETIME as usize);
         test_signature_scheme_correctness::<Sig>(0, 0, Sig::LIFETIME as usize);
@@ -1082,8 +1072,6 @@ mod tests {
         type IE = TargetSumEncoding<MH, EXPECTED_SUM>;
         const LOG_LIFETIME: usize = 6;
         type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
-
-        Sig::internal_consistency_check();
 
         // we sign the same (epoch, message) pair twice (which users of this code should not do)
         // and ensure that it produces the same randomness for the signature.
@@ -1122,8 +1110,6 @@ mod tests {
         const LOG_LIFETIME: usize = 10;
         type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
-        Sig::internal_consistency_check();
-
         test_signature_scheme_correctness::<Sig>(0, 0, Sig::LIFETIME as usize);
         test_signature_scheme_correctness::<Sig>(11, 0, Sig::LIFETIME as usize);
     }
@@ -1139,8 +1125,6 @@ mod tests {
         const LOG_LIFETIME: usize = 10;
         type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
-        Sig::internal_consistency_check();
-
         test_signature_scheme_correctness::<Sig>(2, 0, Sig::LIFETIME as usize);
         test_signature_scheme_correctness::<Sig>(19, 0, Sig::LIFETIME as usize);
     }
@@ -1155,8 +1139,6 @@ mod tests {
         type IE = TargetSumEncoding<MH, TARGET_SUM>;
         const LOG_LIFETIME: usize = 6;
         type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
-
-        Sig::internal_consistency_check();
 
         test_signature_scheme_correctness::<Sig>(2, 0, Sig::LIFETIME as usize);
         test_signature_scheme_correctness::<Sig>(19, 0, Sig::LIFETIME as usize);

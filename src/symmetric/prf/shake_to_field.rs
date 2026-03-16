@@ -115,11 +115,6 @@ where
             F::from_u128(u128::from_be_bytes(buf))
         })
     }
-
-    #[cfg(test)]
-    fn internal_consistency_check() {
-        // No check is needed
-    }
 }
 
 #[cfg(test)]

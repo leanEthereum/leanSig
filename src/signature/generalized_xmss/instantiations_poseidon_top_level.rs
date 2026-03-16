@@ -58,11 +58,6 @@ pub mod lifetime_2_to_the_18 {
         use crate::signature::test_templates::test_signature_scheme_correctness;
 
         #[test]
-        pub fn test_internal_consistency() {
-            SIGTopLevelTargetSumLifetime18Dim64Base8::internal_consistency_check();
-        }
-
-        #[test]
         #[cfg(feature = "slow-tests")]
         pub fn test_correctness() {
             test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime18Dim64Base8>(
@@ -145,11 +140,6 @@ pub mod lifetime_2_to_the_32 {
             use crate::signature::test_templates::test_signature_scheme_correctness;
 
             #[test]
-            pub fn test_internal_consistency() {
-                SIGTopLevelTargetSumLifetime32Dim64Base8::internal_consistency_check();
-            }
-
-            #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_correctness() {
                 test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime32Dim64Base8>(
@@ -226,11 +216,6 @@ pub mod lifetime_2_to_the_32 {
             use crate::signature::test_templates::test_signature_scheme_correctness;
 
             #[test]
-            pub fn test_internal_consistency() {
-                SIGTopLevelTargetSumLifetime32Dim48Base10::internal_consistency_check();
-            }
-
-            #[test]
             #[cfg(feature = "slow-tests")]
             pub fn test_correctness() {
                 test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime32Dim48Base10>(
@@ -304,11 +289,6 @@ pub mod lifetime_2_to_the_32 {
 
             #[cfg(feature = "slow-tests")]
             use crate::signature::test_templates::test_signature_scheme_correctness;
-
-            #[test]
-            pub fn test_internal_consistency() {
-                SIGTopLevelTargetSumLifetime32Dim32Base26::internal_consistency_check();
-            }
 
             #[test]
             #[cfg(feature = "slow-tests")]
@@ -390,11 +370,6 @@ pub mod lifetime_2_to_the_8 {
         use crate::signature::test_templates::test_signature_scheme_correctness;
 
         use super::SIGTopLevelTargetSumLifetime8Dim64Base8;
-
-        #[test]
-        pub fn test_internal_consistency() {
-            SIGTopLevelTargetSumLifetime8Dim64Base8::internal_consistency_check();
-        }
 
         #[cfg(feature = "slow-tests")]
         #[test]
