@@ -100,7 +100,8 @@ where
                 d_i /= BASE as u64;
             }
         }
-        assert_eq!(chunks.len(), DIMENSION);
+        // Sanity check to ensure we hit our exact dimension
+        debug_assert_eq!(chunks.len(), DIMENSION);
 
         Ok(chunks)
     }
