@@ -132,8 +132,8 @@ where
             MSG_LEN_FE,
         >(parameter, epoch, randomness, message);
 
-        let q_wz = Q as u64 * (BASE as u64).pow(Z as u32);
-        let num_useful_fe = DIMENSION.div_ceil(Z);
+        let q_wz = const { Q as u64 * (BASE as u64).pow(Z as u32) };
+        let num_useful_fe = const { DIMENSION.div_ceil(Z) };
         let mut chunks = Vec::with_capacity(DIMENSION);
 
         for fe in &hash_fe[..num_useful_fe] {
