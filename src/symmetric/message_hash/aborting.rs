@@ -28,7 +28,11 @@ pub struct AbortingHypercubeMessageHash<
 
 #[derive(Debug, Error)]
 #[error("Hash aborted: field element exceeded Q * w^z threshold.")]
-pub struct HypercubeAbortError;
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum HypercubeHashError {
+    #[error("Hash aborted: field element exceeded Q * w^z threshold.")]
+    Abort,
+}
 
 impl<
     const PARAMETER_LEN: usize,
