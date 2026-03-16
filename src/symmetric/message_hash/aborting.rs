@@ -135,7 +135,10 @@ where
         // Build the output on the stack — no Vec growth overhead.
         let mut chunks = [0u8; DIMENSION];
 
-        for (i, fe) in hash_fe[..const { DIMENSION.div_ceil(Z) }].iter().enumerate() {
+        for (i, fe) in hash_fe[..const { DIMENSION.div_ceil(Z) }]
+            .iter()
+            .enumerate()
+        {
             let a_i = fe.as_canonical_u64();
             if a_i >= const { Q as u64 * (BASE as u64).pow(Z as u32) } {
                 return Err(HypercubeHashError::Abort);
