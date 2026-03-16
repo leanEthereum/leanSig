@@ -26,8 +26,6 @@ pub struct AbortingHypercubeMessageHash<
     const MSG_LEN_FE: usize,
 >;
 
-#[derive(Debug, Error)]
-#[error("Hash aborted: field element exceeded Q * w^z threshold.")]
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum HypercubeHashError {
     #[error("Hash aborted: field element exceeded Q * w^z threshold.")]
@@ -62,7 +60,7 @@ where
 {
     type Parameter = FieldArray<PARAMETER_LEN>;
     type Randomness = FieldArray<RAND_LEN_FE>;
-    type Error = HypercubeAbortError;
+    type Error = HypercubeHashError;
     const DIMENSION: usize = DIMENSION; // v
     const BASE: usize = BASE; // w
 
@@ -78,7 +76,7 @@ where
         epoch: u32,
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
-    ) -> Result<Vec<u8>, HypercubeAbortError> {
+    ) -> Result<Vec<u8>, HypercubeHashError> {
         let hash_fe = poseidon_message_hash_fe::<
             PARAMETER_LEN,
             RAND_LEN_FE,
@@ -94,7 +92,7 @@ where
         for fe in &hash_fe[..num_useful_fe] {
             let a_i = fe.as_canonical_u64();
             if a_i >= q_wz {
-                return Err(HypercubeAbortError);
+                return Err(HypercubeHashError::Abort);
             }
             let mut d_i = a_i / Q as u64;
             for _ in 0..Z {
