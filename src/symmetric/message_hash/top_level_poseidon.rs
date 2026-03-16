@@ -142,6 +142,68 @@ where
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
     ) -> Result<Vec<u8>, Infallible> {
+        const {
+            /// The width of the Poseidon2 permutation used.
+            const POSEIDON_WIDTH: usize = 24;
+
+            // Check that the combined input fits within the Poseidon width.
+            assert!(
+                RAND_LEN + PARAMETER_LEN + TWEAK_LEN_FE + MSG_LEN_FE < POSEIDON_WIDTH,
+                "Top Level Poseidon Message Hash: Combined input length exceeds Poseidon width"
+            );
+
+            // POS_OUTPUT_LEN_FE must be equal to POS_INVOCATIONS * POS_OUTPUT_LEN_PER_INV_FE
+            assert!(
+                POS_OUTPUT_LEN_FE == POS_INVOCATIONS * POS_OUTPUT_LEN_PER_INV_FE,
+                "Top Level Poseidon Message Hash: POS_OUTPUT_LEN_FE must be equal to POS_INVOCATIONS * POS_OUTPUT_LEN_PER_INV_FE"
+            );
+
+            // POS_OUTPUT_LEN_FE must be at most 15 (because capacity is 9)
+            assert!(
+                POS_OUTPUT_LEN_PER_INV_FE <= 15,
+                "Top Level Poseidon Message Hash: POS_OUTPUT_LEN_PER_INV_FE must be at most 15"
+            );
+
+            // Number of invocations we require should fit in a field element
+            // For simplicity we require at most 2^8 invocations, which is more than enough
+            assert!(
+                POS_INVOCATIONS <= 1 << 8,
+                "Top Level Poseidon Message Hash: POS_INVOCATIONS must be at most 2^8"
+            );
+
+            // FINAL_LAYER must be a valid layer
+            assert!(
+                FINAL_LAYER <= (BASE - 1) * DIMENSION,
+                "Top Level Poseidon Message Hash: FINAL-LAYER must be a valid layer"
+            );
+
+            // Base and dimension check
+            assert!(
+                BASE <= 1 << 8,
+                "Poseidon Message Hash: Base must be at most 2^8"
+            );
+            assert!(
+                DIMENSION <= 1 << 8,
+                "Poseidon Message Hash: Dimension must be at most 2^8"
+            );
+
+            // How many bits can be represented by one field element: floor(log2(ORDER))
+            let bits_per_fe = F::ORDER_U64.ilog2() as usize;
+
+            // Check that we have enough bits to encode message
+            assert!(
+                bits_per_fe * MSG_LEN_FE >= 8 * MESSAGE_LENGTH,
+                "Top Level Poseidon Message Hash: Parameter mismatch: not enough field elements to encode the message"
+            );
+
+            // Check that we have enough bits to encode tweak
+            // Epoch is a u32, and we have one domain separator byte
+            assert!(
+                bits_per_fe * TWEAK_LEN_FE >= 40,
+                "Top Level Poseidon Message Hash: Parameter mismatch: not enough field elements to encode the epoch tweak"
+            );
+        }
+
         let perm = poseidon2_24();
 
         // first, encode the message and the epoch as field elements
@@ -180,71 +242,6 @@ where
             POS_OUTPUT_LEN_FE,
         >(&pos_outputs))
     }
-
-    #[cfg(test)]
-    fn internal_consistency_check() {
-        /// The width of the Poseidon2 permutation used.
-        const POSEIDON_WIDTH: usize = 24;
-
-        // Check that the combined input fits within the Poseidon width.
-        assert!(
-            RAND_LEN + PARAMETER_LEN + TWEAK_LEN_FE + MSG_LEN_FE < POSEIDON_WIDTH,
-            "Top Level Poseidon Message Hash: Combined input length exceeds Poseidon width"
-        );
-
-        // POS_OUTPUT_LEN_FE must be equal to POS_INVOCATIONS * POS_OUTPUT_LEN_PER_INV_FE
-        assert!(
-            POS_OUTPUT_LEN_FE == POS_INVOCATIONS * POS_OUTPUT_LEN_PER_INV_FE,
-            "Top Level Poseidon Message Hash: POS_OUTPUT_LEN_FE must be equal to POS_INVOCATIONS * POS_OUTPUT_LEN_PER_INV_FE"
-        );
-
-        // POS_OUTPUT_LEN_FE must be at most 15 (because capacity is 9)
-        assert!(
-            POS_OUTPUT_LEN_PER_INV_FE <= 15,
-            "Top Level Poseidon Message Hash: POS_OUTPUT_LEN_PER_INV_FE must be at most 15"
-        );
-
-        // Number of invocations we require should fit in a field element
-        // For simplicity we require at most 2^8 invocations, which is more than enough
-        assert!(
-            POS_INVOCATIONS <= 1 << 8,
-            "Top Level Poseidon Message Hash: POS_INVOCATIONS must be at most 2^8"
-        );
-
-        // FINAL_LAYER must be a valid layer
-        assert!(
-            FINAL_LAYER <= (BASE - 1) * DIMENSION,
-            "Top Level Poseidon Message Hash: FINAL-LAYER must be a valid layer"
-        );
-
-        // Base and dimension check
-        assert!(
-            Self::BASE <= 1 << 8,
-            "Poseidon Message Hash: Base must be at most 2^8"
-        );
-        assert!(
-            Self::DIMENSION <= 1 << 8,
-            "Poseidon Message Hash: Dimension must be at most 2^8"
-        );
-
-        // How many bits can be represented by one field element
-        let bits_per_fe = f64::floor(f64::log2(F::ORDER_U64 as f64));
-
-        // Check that we have enough bits to encode message
-        let message_fe_bits = bits_per_fe * f64::from(MSG_LEN_FE as u32);
-        assert!(
-            message_fe_bits >= f64::from((8_u32) * (MESSAGE_LENGTH as u32)),
-            "Top Level Poseidon Message Hash: Parameter mismatch: not enough field elements to encode the message"
-        );
-
-        // Check that we have enough bits to encode tweak
-        // Epoch is a u32, and we have one domain separator byte
-        let tweak_fe_bits = bits_per_fe * f64::from(TWEAK_LEN_FE as u32);
-        assert!(
-            tweak_fe_bits >= f64::from(32 + 8_u32),
-            "Top Level Poseidon Message Hash: Parameter mismatch: not enough field elements to encode the epoch tweak"
-        );
-    }
 }
 
 #[cfg(test)]
@@ -274,7 +271,6 @@ mod tests {
         let epoch = 313;
         let randomness = MH::rand(&mut rng);
 
-        MH::internal_consistency_check();
         let hash: Vec<u8> = MH::apply(&parameter, epoch, &randomness, &message).unwrap();
 
         // we also want that the output is in the relevant part of the hypercube,

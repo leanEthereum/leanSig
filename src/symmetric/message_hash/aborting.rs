@@ -77,39 +77,6 @@ where
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
     ) -> Result<Vec<u8>, HypercubeHashError> {
-        let hash_fe = poseidon_message_hash_fe::<
-            PARAMETER_LEN,
-            RAND_LEN_FE,
-            HASH_LEN_FE,
-            TWEAK_LEN_FE,
-            MSG_LEN_FE,
-        >(parameter, epoch, randomness, message);
-
-        let q_wz = Q as u64 * (BASE as u64).pow(Z as u32);
-        let num_useful_fe = DIMENSION.div_ceil(Z);
-        let mut chunks = Vec::with_capacity(DIMENSION);
-
-        for fe in &hash_fe[..num_useful_fe] {
-            let a_i = fe.as_canonical_u64();
-            if a_i >= q_wz {
-                return Err(HypercubeHashError::Abort);
-            }
-            let mut d_i = a_i / Q as u64;
-            for _ in 0..Z {
-                if chunks.len() < DIMENSION {
-                    chunks.push((d_i % BASE as u64) as u8);
-                }
-                d_i /= BASE as u64;
-            }
-        }
-        // Sanity check to ensure we hit our exact dimension
-        debug_assert_eq!(chunks.len(), DIMENSION);
-
-        Ok(chunks)
-    }
-
-    #[cfg(test)]
-    fn internal_consistency_check() {
         const {
             // Check that Poseidon of width 24 is enough
             assert!(
@@ -130,34 +97,62 @@ where
 
             // Base check
             assert!(
-                Self::BASE <= 1 << 8,
+                BASE <= 1 << 8,
                 "Aborting Hypercube Message Hash: Base must be at most 2^8"
+            );
+
+            // Check that Q * w^z fits within the field
+            assert!(
+                Q as u64 * (BASE as u64).pow(Z as u32) <= F::ORDER_U64,
+                "Q * w^z exceeds field order"
+            );
+
+            // floor(log2(ORDER))
+            let bits_per_fe = F::ORDER_U64.ilog2() as usize;
+
+            // Check that we have enough bits to encode message
+            assert!(
+                bits_per_fe * MSG_LEN_FE >= 8 * MESSAGE_LENGTH,
+                "Aborting Hypercube Message Hash: not enough field elements to encode the message"
+            );
+
+            // Check that we have enough bits to encode tweak
+            // Epoch is a u32, and we have one domain separator byte
+            assert!(
+                bits_per_fe * TWEAK_LEN_FE >= 40,
+                "Aborting Hypercube Message Hash: not enough field elements to encode the epoch tweak"
             );
         }
 
-        // Check that Q * w^z fits within the field
-        assert!(
-            Q as u64 * (BASE as u64).pow(Z as u32) <= F::ORDER_U64,
-            "Q * w^z exceeds field order"
-        );
+        let hash_fe = poseidon_message_hash_fe::<
+            PARAMETER_LEN,
+            RAND_LEN_FE,
+            HASH_LEN_FE,
+            TWEAK_LEN_FE,
+            MSG_LEN_FE,
+        >(parameter, epoch, randomness, message);
 
-        // how many bits can be represented by one field element
-        let bits_per_fe = f64::floor(f64::log2(F::ORDER_U64 as f64));
+        let q_wz = const { Q as u64 * (BASE as u64).pow(Z as u32) };
+        let num_useful_fe = const { DIMENSION.div_ceil(Z) };
+        let mut chunks = Vec::with_capacity(DIMENSION);
 
-        // Check that we have enough bits to encode message
-        let message_fe_bits = bits_per_fe * f64::from(MSG_LEN_FE as u32);
-        assert!(
-            message_fe_bits >= f64::from((8_u32) * (MESSAGE_LENGTH as u32)),
-            "Aborting Hypercube Message Hash: not enough field elements to encode the message"
-        );
+        for fe in &hash_fe[..num_useful_fe] {
+            let a_i = fe.as_canonical_u64();
+            if a_i >= q_wz {
+                return Err(HypercubeHashError::Abort);
+            }
+            let mut d_i = a_i / Q as u64;
+            for _ in 0..Z {
+                if chunks.len() < DIMENSION {
+                    chunks.push((d_i % BASE as u64) as u8);
+                }
+                d_i /= BASE as u64;
+            }
+        }
+        // Sanity check to ensure we hit our exact dimension
+        debug_assert_eq!(chunks.len(), DIMENSION);
 
-        // Check that we have enough bits to encode tweak
-        // Epoch is a u32, and we have one domain separator byte
-        let tweak_fe_bits = bits_per_fe * f64::from(TWEAK_LEN_FE as u32);
-        assert!(
-            tweak_fe_bits >= f64::from(32 + 8_u32),
-            "Aborting Hypercube Message Hash: not enough field elements to encode the epoch tweak"
-        );
+        Ok(chunks)
     }
 }
 
@@ -172,11 +167,6 @@ mod tests {
     use p3_field::PrimeField32;
     use proptest::prelude::*;
     use rand::{SeedableRng, rngs::StdRng};
-
-    #[test]
-    fn test_internal_consistency() {
-        HypercubePoseidonMHKoalaBear::internal_consistency_check();
-    }
 
     #[test]
     fn test_apply() {
@@ -234,8 +224,6 @@ mod tests {
         type HighAbortMH = AbortingHypercubeMessageHash<5, 5, 3, 9, 8, 3, 2_080_768, 2, 9>;
         const NUM_TRIALS: usize = 1000;
 
-        HighAbortMH::internal_consistency_check();
-
         let mut rng = StdRng::seed_from_u64(0);
         let parameter: FieldArray<5> = FieldArray(rng.random());
         let message: [u8; 32] = rng.random();
@@ -271,8 +259,6 @@ mod tests {
         type SmallMH = AbortingHypercubeMessageHash<5, 5, 1, 2, 4, 2, 66_585_201, 2, 9>;
         const NUM_SAMPLES: usize = 1_000_000;
         const NUM_OUTPUTS: usize = 16; // 4^2
-
-        SmallMH::internal_consistency_check();
 
         let mut rng = StdRng::seed_from_u64(42);
         let parameter: FieldArray<5> = FieldArray(rng.random());

@@ -101,12 +101,6 @@ pub trait TweakableHash {
         PRF: Pseudorandom,
         PRF::Domain: Into<Self::Domain>,
         Self: Sized;
-
-    /// Function to check internal consistency of any given parameters.
-    ///
-    /// This is for testing only and is expected to panic if something is wrong.
-    #[cfg(test)]
-    fn internal_consistency_check();
 }
 
 /// Function implementing hash chains, implemented over a tweakable hash function
