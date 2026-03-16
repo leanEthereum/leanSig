@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, SamplingMode};
-use rand::Rng;
+use rand::RngExt;
 
 use leansig::{
     MESSAGE_LENGTH,

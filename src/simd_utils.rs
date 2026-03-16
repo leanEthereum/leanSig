@@ -90,7 +90,7 @@ mod tests {
     use super::*;
     use p3_field::PrimeCharacteristicRing;
     use proptest::prelude::*;
-    use rand::Rng;
+    use rand::RngExt;
 
     #[test]
     fn test_pack_array_simple() {

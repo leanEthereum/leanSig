@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::RngExt;
 use std::fmt::Debug;
 
 use crate::MESSAGE_LENGTH;
@@ -33,7 +33,7 @@ pub trait IncomparableEncoding {
     const BASE: usize;
 
     /// Samples a randomness to be used for the encoding.
-    fn rand<R: Rng>(rng: &mut R) -> Self::Randomness;
+    fn rand<R: RngExt>(rng: &mut R) -> Self::Randomness;
 
     /// Apply the incomparable encoding to a message.
     /// It could happen that this fails. Otherwise,

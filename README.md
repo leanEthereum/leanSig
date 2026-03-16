@@ -56,7 +56,7 @@ See also function `test_signature_scheme_correctness` in [this file](https://git
 
 ## Schemes
 The code implements a generic framework from [this paper](https://eprint.iacr.org/2025/055.pdf), which builds XMSS-like hash-based signatures from a primitive called incomparable encodings.
-Hardcoded instantiations of this generic framework (using Poseidon2) are defined in `leansig::signature::generalized_xmss`.
+Hardcoded instantiations of this generic framework (using Poseidon1) are defined in `leansig::signature::generalized_xmss`.
 The parameters have been chosen based on the analysis in the paper using Python scripts. Details are as follows:
 
 | Submodule        | Paper / Documentation                                     | Parameters Set With     |

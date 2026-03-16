@@ -51,7 +51,7 @@ impl<MH: MessageHash, const TARGET_SUM: usize> IncomparableEncoding
 
     const BASE: usize = MH::BASE;
 
-    fn rand<R: rand::Rng>(rng: &mut R) -> Self::Randomness {
+    fn rand<R: rand::RngExt>(rng: &mut R) -> Self::Randomness {
         MH::rand(rng)
     }
 
@@ -97,6 +97,7 @@ mod tests {
     use crate::symmetric::message_hash::poseidon::PoseidonMessageHash445;
     use p3_field::PrimeField32;
     use proptest::prelude::*;
+    use rand::RngExt;
 
     const TEST_TARGET_SUM: usize = 115;
     type TestTargetSumEncoding = TargetSumEncoding<PoseidonMessageHash445, TEST_TARGET_SUM>;
