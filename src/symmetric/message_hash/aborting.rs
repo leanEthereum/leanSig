@@ -107,6 +107,7 @@ where
 
     #[cfg(test)]
     fn internal_consistency_check() {
+        const{
         // Check that Poseidon of width 24 is enough
         assert!(
             PARAMETER_LEN + RAND_LEN_FE + TWEAK_LEN_FE + MSG_LEN_FE <= 24,
@@ -129,6 +130,7 @@ where
             Self::BASE <= 1 << 8,
             "Aborting Hypercube Message Hash: Base must be at most 2^8"
         );
+        }
 
         // Check that Q * w^z fits within the field
         assert!(
