@@ -120,7 +120,7 @@ pub mod lifetime_2_to_the_6 {
         MSG_LEN_FE,
     >;
 
-    const TARGET_SUM: usize = 230; // TODO
+    const TARGET_SUM: usize = 200;
 
     type TH = PoseidonTweakHash<PARAMETER_LEN, TH_HASH_LEN_FE, TWEAK_LEN_FE, CAPACITY, DIMENSION>;
     type PRF = ShakePRFtoF<TH_HASH_LEN_FE, RAND_LEN_FE>;
