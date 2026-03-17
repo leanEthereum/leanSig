@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use rand::Rng;
+use rand::RngExt;
 
 use crate::MESSAGE_LENGTH;
 use crate::serialization::Serializable;
@@ -25,7 +25,7 @@ pub trait MessageHash {
     const BASE: usize;
 
     /// Generates a random domain element.
-    fn rand<R: Rng>(rng: &mut R) -> Self::Randomness;
+    fn rand<R: RngExt>(rng: &mut R) -> Self::Randomness;
 
     /// Applies the message hash to a parameter, an epoch,
     /// a randomness, and a message. It outputs a list of chunks.

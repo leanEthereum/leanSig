@@ -153,6 +153,7 @@ impl<'de, const N: usize> Deserialize<'de> for FieldArray<N> {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use rand::RngExt;
 
     /// Small parameter arrays
     const SMALL_SIZE: usize = 5;

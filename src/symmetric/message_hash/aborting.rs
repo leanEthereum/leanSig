@@ -64,7 +64,7 @@ where
     const DIMENSION: usize = DIMENSION; // v
     const BASE: usize = BASE; // w
 
-    fn rand<R: rand::Rng>(rng: &mut R) -> Self::Randomness {
+    fn rand<R: rand::RngExt>(rng: &mut R) -> Self::Randomness {
         FieldArray(rng.random())
     }
 
@@ -167,7 +167,7 @@ mod tests {
     use super::*;
     use p3_field::PrimeField32;
     use proptest::prelude::*;
-    use rand::{SeedableRng, rngs::StdRng};
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
 
     #[test]
     fn test_apply() {

@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use crate::MESSAGE_LENGTH;
 use crate::serialization::Serializable;
-use rand::Rng;
+use rand::RngExt;
 use thiserror::Error;
 
 /// Error enum for the signing process.
@@ -146,7 +146,7 @@ pub trait SignatureScheme {
     ///
     /// ### Returns
     /// A tuple containing the new `(PublicKey, SecretKey)`.
-    fn key_gen<R: Rng>(
+    fn key_gen<R: RngExt>(
         rng: &mut R,
         activation_epoch: usize,
         num_active_epochs: usize,
@@ -209,6 +209,7 @@ pub mod generalized_xmss;
 
 #[cfg(test)]
 mod test_templates {
+    use rand::RngExt;
     use serde::{Serialize, de::DeserializeOwned};
 
     use super::*;

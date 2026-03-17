@@ -11,7 +11,7 @@ use crate::F;
 use crate::MESSAGE_LENGTH;
 use crate::TWEAK_SEPARATOR_FOR_MESSAGE_HASH;
 use crate::array::FieldArray;
-use crate::poseidon2_24;
+use crate::poseidon1_24;
 use crate::symmetric::tweak_hash::poseidon::poseidon_compress;
 
 /// Function to encode a message as an array of field elements
@@ -92,7 +92,7 @@ fn decode_to_chunks<const DIMENSION: usize, const BASE: usize, const HASH_LEN_FE
     })
 }
 
-/// Hashes the public parameter, the epoch, the randomness, and the message using Poseidon2 over
+/// Hashes the public parameter, the epoch, the randomness, and the message using Poseidon1 over
 /// 24 field elements, in compression mode. (the total input length must be at most 24)
 pub(crate) fn poseidon_message_hash_fe<
     const PARAMETER_LEN: usize,
@@ -106,8 +106,8 @@ pub(crate) fn poseidon_message_hash_fe<
     randomness: &FieldArray<RAND_LEN_FE>,
     message: &[u8; MESSAGE_LENGTH],
 ) -> [F; HASH_LEN_FE] {
-    // Get the default, pre-configured Poseidon2 instance from Plonky3.
-    let perm = poseidon2_24();
+    // Get the default, pre-configured Poseidon1 instance from Plonky3.
+    let perm = poseidon1_24();
 
     // first, encode the message and the epoch as field elements
     let message_fe = encode_message::<MSG_LEN_FE>(message);
@@ -125,7 +125,7 @@ pub(crate) fn poseidon_message_hash_fe<
     poseidon_compress::<F, _, 24, HASH_LEN_FE>(&perm, &combined_input_vec)
 }
 
-/// A message hash implemented using Poseidon2
+/// A message hash implemented using Poseidon1
 ///
 /// Note: PARAMETER_LEN, RAND_LEN, TWEAK_LEN_FE, MSG_LEN_FE, and HASH_LEN_FE
 /// must be given in the unit "number of field elements".
@@ -176,7 +176,7 @@ where
 
     const BASE: usize = BASE;
 
-    fn rand<R: rand::Rng>(rng: &mut R) -> Self::Randomness {
+    fn rand<R: rand::RngExt>(rng: &mut R) -> Self::Randomness {
         FieldArray(rng.random())
     }
 
@@ -255,7 +255,7 @@ mod tests {
     use num_traits::Zero;
     use p3_field::PrimeField32;
     use proptest::prelude::*;
-    use rand::Rng;
+    use rand::RngExt;
     use std::collections::HashMap;
 
     #[test]

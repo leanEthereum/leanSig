@@ -1,7 +1,7 @@
 use crate::serialization::Serializable;
 use crate::symmetric::tweak_hash::TweakableHash;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
 use ssz::{Decode, DecodeError, Encode};
 
@@ -103,7 +103,7 @@ impl<TH: TweakableHash> HashTreeLayer<TH> {
     /// - With this alignment every parent is formed from exactly two children,
     ///   so upper layers can be built with exact size-2 chunks, with no edge cases.
     #[inline]
-    fn padded<R: Rng>(rng: &mut R, nodes: Vec<TH::Domain>, start_index: usize) -> Self {
+    fn padded<R: RngExt>(rng: &mut R, nodes: Vec<TH::Domain>, start_index: usize) -> Self {
         // End index of the provided contiguous run (inclusive).
         let end_index = start_index + nodes.len() - 1;
 
@@ -349,7 +349,7 @@ where
     /// Note: The RNG is used for generating nodes used for padding in the case of
     /// sparse trees. They could as well be fixed, and hence the RNG does not need
     /// to be cryptographically secure for this function.
-    pub fn new_subtree<R: Rng>(
+    pub fn new_subtree<R: RngExt>(
         rng: &mut R,
         lowest_layer: usize,
         depth: usize,
@@ -411,7 +411,7 @@ where
     /// It takes as input the roots of all 2^{depth/2} bottom trees. Note that these are
     /// exactly the nodes in layer depth / 2. The `start_index` indicates which bottom tree
     /// is the first that is given. It be in [0, 2^{depth/2}).
-    pub fn new_top_tree<R: Rng>(
+    pub fn new_top_tree<R: RngExt>(
         rng: &mut R,
         depth: usize,
         start_index: usize,
