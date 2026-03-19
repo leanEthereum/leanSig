@@ -7,8 +7,8 @@ use rayon::prelude::*;
 use crate::TWEAK_SEPARATOR_FOR_CHAIN_HASH;
 use crate::TWEAK_SEPARATOR_FOR_TREE_HASH;
 use crate::array::FieldArray;
-use crate::poseidon2_16;
-use crate::poseidon2_24;
+use crate::poseidon1_16;
+use crate::poseidon1_24;
 use crate::simd_utils::{pack_array, pack_even_into, pack_fn_into, pack_odd_into};
 use crate::symmetric::prf::Pseudorandom;
 use crate::symmetric::tweak_hash::chain;
@@ -16,7 +16,7 @@ use crate::{F, PackedF};
 
 use super::TweakableHash;
 
-use p3_koala_bear::Poseidon2KoalaBear;
+use p3_koala_bear::Poseidon1KoalaBear;
 use std::cell::RefCell;
 
 const DOMAIN_PARAMETERS_LENGTH: usize = 4;
@@ -135,11 +135,11 @@ where
 }
 
 /// Computes a Poseidon-based domain separator by compressing an array of `u32`
-/// values using the Poseidon2 KoalaBear permutation with width 24.
+/// values using the Poseidon1 KoalaBear permutation with width 24.
 ///
 /// Returns scalar field elements. For SIMD use, broadcast to `PackedF` at the call site.
 fn poseidon_safe_domain_separator<const OUT_LEN: usize>(
-    perm: &Poseidon2KoalaBear<MERGE_COMPRESSION_WIDTH>,
+    perm: &Poseidon1KoalaBear<MERGE_COMPRESSION_WIDTH>,
     params: &[u32; DOMAIN_PARAMETERS_LENGTH],
 ) -> [F; OUT_LEN] {
     // Combine params into a single number in base 2^32
@@ -245,7 +245,7 @@ where
     out
 }
 
-/// A tweakable hash function implemented using Poseidon2
+/// A tweakable hash function implemented using Poseidon1
 ///
 /// Note: HASH_LEN, TWEAK_LEN, CAPACITY, and PARAMETER_LEN must
 /// be given in the unit "number of field elements".
@@ -272,11 +272,11 @@ impl<
 
     type Domain = FieldArray<HASH_LEN>;
 
-    fn rand_parameter<R: rand::Rng>(rng: &mut R) -> Self::Parameter {
+    fn rand_parameter<R: rand::RngExt>(rng: &mut R) -> Self::Parameter {
         FieldArray(rng.random())
     }
 
-    fn rand_domain<R: rand::Rng>(rng: &mut R) -> Self::Domain {
+    fn rand_domain<R: rand::RngExt>(rng: &mut R) -> Self::Domain {
         FieldArray(rng.random())
     }
 
@@ -344,7 +344,7 @@ impl<
         match message {
             [single] => {
                 // we compress parameter, tweak, message
-                let perm = poseidon2_16();
+                let perm = poseidon1_16();
 
                 // Build input on stack: [parameter | tweak | message]
                 let mut combined_input = [F::ZERO; CHAIN_COMPRESSION_WIDTH];
@@ -363,7 +363,7 @@ impl<
 
             [left, right] => {
                 // we compress parameter, tweak, message (now containing two parts)
-                let perm = poseidon2_24();
+                let perm = poseidon1_24();
 
                 // Build input on stack: [parameter | tweak | left | right]
                 let mut combined_input = [F::ZERO; MERGE_COMPRESSION_WIDTH];
@@ -385,7 +385,7 @@ impl<
 
             _ if message.len() > 2 => {
                 // Hashing many blocks
-                let perm = poseidon2_24();
+                let perm = poseidon1_24();
                 let combined_input: Vec<F> = parameter
                     .iter()
                     .chain(tweak_fe.iter())
@@ -431,7 +431,7 @@ impl<
             array::from_fn(|i| PackedF::from(parameter.0[i]));
 
         // Permutation for merging two inputs (width-24)
-        let perm = poseidon2_24();
+        let perm = poseidon1_24();
 
         // Offsets for assembling packed_input: [parameter | tweak | left | right]
         let tweak_offset = PARAMETER_LEN;
@@ -532,8 +532,8 @@ impl<
         // Create Poseidon permutation instances.
         // - Width-16 for chain compression,
         // - Width-24 for sponge hashing.
-        let chain_perm = poseidon2_16();
-        let sponge_perm = poseidon2_24();
+        let chain_perm = poseidon1_16();
+        let sponge_perm = poseidon1_24();
 
         // Compute domain separator for the sponge construction.
         // This ensures different use cases produce different outputs.
@@ -740,7 +740,7 @@ mod tests {
     use std::collections::HashMap;
 
     use num_bigint::BigUint;
-    use rand::Rng;
+    use rand::RngExt;
 
     use super::*;
     use crate::symmetric::prf::shake_to_field::ShakePRFtoF;

@@ -15,7 +15,7 @@ use crate::array::FieldArray;
 use crate::hypercube::hypercube_find_layer;
 use crate::hypercube::hypercube_part_size;
 use crate::hypercube::map_to_vertex;
-use crate::poseidon2_24;
+use crate::poseidon1_24;
 use crate::symmetric::tweak_hash::poseidon::poseidon_compress;
 
 /// Function to make a list of field elements to a vertex in layers 0, ..., FINAL_LAYER
@@ -49,7 +49,7 @@ fn map_into_hypercube_part<
     map_to_vertex(BASE, DIMENSION, layer, offset)
 }
 
-/// A message hash implemented using Poseidon2 that maps messages into the top layers
+/// A message hash implemented using Poseidon1 that maps messages into the top layers
 /// of a hypercube structure.
 ///
 /// Specifically, consider the hypercube {0, ..., BASE-1}^DIMENSION, partitioned into layers as follows:
@@ -67,9 +67,9 @@ fn map_into_hypercube_part<
 ///   are specified in **number of field elements**.
 ///
 /// - `POS_OUTPUT_LEN_PER_INV_FE` specifies how many field elements we obtain
-///   from each Poseidon2 invocation.
+///   from each Poseidon1 invocation.
 ///
-/// - `POS_INVOCATIONS` is the number of Poseidon2 invocations performed.
+/// - `POS_INVOCATIONS` is the number of Poseidon1 invocations performed.
 ///
 /// We then take the resulting `POS_INVOCATIONS * POS_OUTPUT_LEN_PER_INV_FE`
 /// field elements and decode them into an element of the top layers.
@@ -132,7 +132,7 @@ where
 
     const BASE: usize = BASE;
 
-    fn rand<R: rand::Rng>(rng: &mut R) -> Self::Randomness {
+    fn rand<R: rand::RngExt>(rng: &mut R) -> Self::Randomness {
         FieldArray(rng.random())
     }
 
@@ -143,7 +143,7 @@ where
         message: &[u8; MESSAGE_LENGTH],
     ) -> Result<Vec<u8>, Infallible> {
         const {
-            /// The width of the Poseidon2 permutation used.
+            /// The width of the Poseidon1 permutation used.
             const POSEIDON_WIDTH: usize = 24;
 
             // Check that the combined input fits within the Poseidon width.
@@ -204,7 +204,7 @@ where
             );
         }
 
-        let perm = poseidon2_24();
+        let perm = poseidon1_24();
 
         // first, encode the message and the epoch as field elements
         let message_fe = encode_message::<MSG_LEN_FE>(message);
@@ -248,7 +248,7 @@ where
 mod tests {
     use super::*;
     use proptest::prelude::*;
-    use rand::Rng;
+    use rand::RngExt;
 
     use crate::symmetric::message_hash::{
         MessageHash, top_level_poseidon::TopLevelPoseidonMessageHash,

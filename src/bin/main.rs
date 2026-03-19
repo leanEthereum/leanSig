@@ -8,11 +8,11 @@ use leansig::signature::generalized_xmss::instantiations_poseidon::lifetime_2_to
 use leansig::signature::generalized_xmss::instantiations_poseidon::lifetime_2_to_the_20::target_sum::SIGTargetSumLifetime20W8NoOff;
 use leansig::signature::SignatureScheme;
 use rand::rngs::ThreadRng;
-use rand::Rng;
+use rand::RngExt;
 use std::time::Instant;
 
 // Function to measure execution time
-fn measure_time<T: SignatureScheme, R: Rng>(description: &str, rng: &mut R) {
+fn measure_time<T: SignatureScheme, R: RngExt>(description: &str, rng: &mut R) {
     // key gen
 
     let start = Instant::now();

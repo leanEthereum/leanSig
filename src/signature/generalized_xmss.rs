@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use rand::Rng;
+use rand::RngExt;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -653,7 +653,7 @@ where
 
     const LIFETIME: u64 = 1 << LOG_LIFETIME;
 
-    fn key_gen<R: Rng>(
+    fn key_gen<R: RngExt>(
         rng: &mut R,
         activation_epoch: usize,
         num_active_epochs: usize,
@@ -1004,10 +1004,10 @@ impl<PRF: Pseudorandom, IE: IncomparableEncoding, TH: TweakableHash, const LOG_L
 /// Instantiations of the generalized XMSS signature scheme based on the
 /// aborting hypercube message hash (rejection sampling)
 pub mod instantiations_aborting;
-/// Instantiations of the generalized XMSS signature scheme based on Poseidon2
+/// Instantiations of the generalized XMSS signature scheme based on Poseidon1
 pub mod instantiations_poseidon;
 /// Instantiations of the generalized XMSS signature scheme based on the
-/// top level target sum encoding using Poseidon2
+/// top level target sum encoding using Poseidon1
 pub mod instantiations_poseidon_top_level;
 
 #[cfg(test)]
@@ -1034,7 +1034,7 @@ mod tests {
 
     use crate::{F, symmetric::tweak_hash::poseidon::PoseidonTweakHash};
     use p3_field::RawDataSerializable;
-    use rand::rng;
+    use rand::{RngExt, rng};
     use ssz::{Decode, Encode};
 
     type TestTH = PoseidonTweakHash<5, 7, 2, 9, 155>;

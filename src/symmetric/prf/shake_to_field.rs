@@ -32,7 +32,7 @@ where
     type Domain = [F; DOMAIN_LENGTH_FE];
     type Randomness = [F; RAND_LENGTH_FE];
 
-    fn key_gen<R: rand::Rng>(rng: &mut R) -> Self::Key {
+    fn key_gen<R: rand::RngExt>(rng: &mut R) -> Self::Key {
         rng.random()
     }
 

@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::RngExt;
 
 use rayon::prelude::*;
 
@@ -28,10 +28,10 @@ pub trait TweakableHash {
     type Domain: Copy + PartialEq + Send + Sync + Serializable;
 
     /// Generates a random public parameter.
-    fn rand_parameter<R: Rng>(rng: &mut R) -> Self::Parameter;
+    fn rand_parameter<R: RngExt>(rng: &mut R) -> Self::Parameter;
 
     /// Generates a random domain element.
-    fn rand_domain<R: Rng>(rng: &mut R) -> Self::Domain;
+    fn rand_domain<R: RngExt>(rng: &mut R) -> Self::Domain;
 
     /// Returns a tweak to be used in the Merkle tree.
     /// Note: this is assumed to be distinct from the outputs of chain_tweak

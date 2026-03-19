@@ -30,7 +30,7 @@ uninlined_format_args = "allow"
 upper_case_acronyms = "allow"
 
 [dependencies]
-rand = "0.9"
+rand = "0.10"
 sha3 = "0.10.8"
 num-bigint = "0.4.6"
 rayon = "1.10.0"
@@ -41,10 +41,10 @@ thiserror = "2.0"
 
 ssz = { package = "ethereum_ssz", version = "0.10.0" }
 
-p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "d421e32" }
-p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3.git", rev = "d421e32" }
-p3-koala-bear = { git = "https://github.com/Plonky3/Plonky3.git", rev = "d421e32" }
-p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", rev = "d421e32" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "b4dcde46" }
+p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3.git", rev = "b4dcde46" }
+p3-koala-bear = { git = "https://github.com/Plonky3/Plonky3.git", rev = "b4dcde46" }
+p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", rev = "b4dcde46" }
 
 [dev-dependencies]
 criterion = "0.7"

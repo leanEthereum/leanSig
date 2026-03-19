@@ -64,7 +64,7 @@ where
     const DIMENSION: usize = DIMENSION; // v
     const BASE: usize = BASE; // w
 
-    fn rand<R: rand::Rng>(rng: &mut R) -> Self::Randomness {
+    fn rand<R: rand::RngExt>(rng: &mut R) -> Self::Randomness {
         FieldArray(rng.random())
     }
 
@@ -132,27 +132,28 @@ where
             MSG_LEN_FE,
         >(parameter, epoch, randomness, message);
 
-        let q_wz = const { Q as u64 * (BASE as u64).pow(Z as u32) };
-        let num_useful_fe = const { DIMENSION.div_ceil(Z) };
-        let mut chunks = Vec::with_capacity(DIMENSION);
+        // Build the output on the stack — no Vec growth overhead.
+        let mut chunks = [0u8; DIMENSION];
 
-        for fe in &hash_fe[..num_useful_fe] {
+        for (i, fe) in hash_fe[..const { DIMENSION.div_ceil(Z) }]
+            .iter()
+            .enumerate()
+        {
             let a_i = fe.as_canonical_u64();
-            if a_i >= q_wz {
+            if a_i >= const { Q as u64 * (BASE as u64).pow(Z as u32) } {
                 return Err(HypercubeHashError::Abort);
             }
-            let mut d_i = a_i / Q as u64;
-            for _ in 0..Z {
-                if chunks.len() < DIMENSION {
-                    chunks.push((d_i % BASE as u64) as u8);
-                }
-                d_i /= BASE as u64;
+            // Decompose d_i = floor(a_i / Q) into base-BASE digits.
+            // Position and count are derived from the FE index — no mutable cursor.
+            let mut d_i = a_i / const { Q as u64 };
+            let base_idx = i * Z;
+            for j in 0..Z.min(DIMENSION - base_idx) {
+                chunks[base_idx + j] = (d_i % const { BASE as u64 }) as u8;
+                d_i /= const { BASE as u64 };
             }
         }
-        // Sanity check to ensure we hit our exact dimension
-        debug_assert_eq!(chunks.len(), DIMENSION);
 
-        Ok(chunks)
+        Ok(chunks.to_vec())
     }
 }
 
@@ -166,7 +167,7 @@ mod tests {
     use super::*;
     use p3_field::PrimeField32;
     use proptest::prelude::*;
-    use rand::{SeedableRng, rngs::StdRng};
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
 
     #[test]
     fn test_apply() {

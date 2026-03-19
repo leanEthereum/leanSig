@@ -46,20 +46,17 @@ pub mod lifetime_2_to_the_18 {
     pub type SIGTopLevelTargetSumLifetime18Dim64Base8 =
         GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "slow-tests"))]
     mod test {
 
         #[cfg(feature = "slow-tests")]
         use crate::signature::{
             SignatureScheme,
             generalized_xmss::instantiations_poseidon_top_level::lifetime_2_to_the_18::SIGTopLevelTargetSumLifetime18Dim64Base8,
+            test_templates::test_signature_scheme_correctness,
         };
 
-        #[cfg(feature = "slow-tests")]
-        use crate::signature::test_templates::test_signature_scheme_correctness;
-
         #[test]
-        #[cfg(feature = "slow-tests")]
         pub fn test_correctness() {
             test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime18Dim64Base8>(
                 213,
@@ -131,19 +128,16 @@ pub mod lifetime_2_to_the_32 {
         pub type PubKeyTopLevelTargetSumLifetime32Dim64Base8 = GeneralizedXMSSPublicKey<TH>;
         pub type SigTopLevelTargetSumLifetime32Dim64Base8 = GeneralizedXMSSSignature<IE, TH>;
 
-        #[cfg(test)]
+        #[cfg(all(test, feature = "slow-tests"))]
         mod test {
 
             #[cfg(feature = "slow-tests")]
             use super::*;
-            #[cfg(feature = "slow-tests")]
-            use crate::signature::SignatureScheme;
-
-            #[cfg(feature = "slow-tests")]
-            use crate::signature::test_templates::test_signature_scheme_correctness;
+            use crate::signature::{
+                SignatureScheme, test_templates::test_signature_scheme_correctness,
+            };
 
             #[test]
-            #[cfg(feature = "slow-tests")]
             pub fn test_correctness() {
                 test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime32Dim64Base8>(
                     213,
@@ -209,19 +203,16 @@ pub mod lifetime_2_to_the_32 {
         pub type SIGTopLevelTargetSumLifetime32Dim48Base10 =
             GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
-        #[cfg(test)]
+        #[cfg(all(test, feature = "slow-tests"))]
         mod test {
 
             #[cfg(feature = "slow-tests")]
             use super::*;
-            #[cfg(feature = "slow-tests")]
-            use crate::signature::SignatureScheme;
-
-            #[cfg(feature = "slow-tests")]
-            use crate::signature::test_templates::test_signature_scheme_correctness;
+            use crate::signature::{
+                SignatureScheme, test_templates::test_signature_scheme_correctness,
+            };
 
             #[test]
-            #[cfg(feature = "slow-tests")]
             pub fn test_correctness() {
                 test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime32Dim48Base10>(
                     213,
@@ -286,19 +277,16 @@ pub mod lifetime_2_to_the_32 {
         pub type SIGTopLevelTargetSumLifetime32Dim32Base26 =
             GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
-        #[cfg(test)]
+        #[cfg(all(test, feature = "slow-tests"))]
         mod test {
 
             #[cfg(feature = "slow-tests")]
             use super::*;
-            #[cfg(feature = "slow-tests")]
-            use crate::signature::SignatureScheme;
-
-            #[cfg(feature = "slow-tests")]
-            use crate::signature::test_templates::test_signature_scheme_correctness;
+            use crate::signature::{
+                SignatureScheme, test_templates::test_signature_scheme_correctness,
+            };
 
             #[test]
-            #[cfg(feature = "slow-tests")]
             pub fn test_correctness() {
                 test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime32Dim32Base26>(
                     213,
@@ -368,19 +356,16 @@ pub mod lifetime_2_to_the_8 {
     pub type SIGTopLevelTargetSumLifetime8Dim64Base8 =
         GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "slow-tests"))]
     mod test {
 
-        #[cfg(feature = "slow-tests")]
-        use crate::signature::SignatureScheme;
-
-        #[cfg(feature = "slow-tests")]
-        use crate::signature::test_templates::test_signature_scheme_correctness;
+        use crate::signature::{
+            SignatureScheme, test_templates::test_signature_scheme_correctness,
+        };
 
         #[cfg(feature = "slow-tests")]
         use super::SIGTopLevelTargetSumLifetime8Dim64Base8;
 
-        #[cfg(feature = "slow-tests")]
         #[test]
         pub fn test_correctness() {
             test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime8Dim64Base8>(
