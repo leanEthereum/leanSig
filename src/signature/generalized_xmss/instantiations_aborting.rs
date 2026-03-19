@@ -21,10 +21,10 @@ pub mod lifetime_2_to_the_32 {
     const Q: usize = 127;
 
     const PARAMETER_LEN: usize = 5;
-    pub const TWEAK_LEN_FE: usize = 2;
+    const TWEAK_LEN_FE: usize = 2;
     const MSG_LEN_FE: usize = 9;
-    pub const RAND_LEN_FE: usize = 7;
-    pub const HASH_LEN_FE: usize = 8;
+    const RAND_LEN_FE: usize = 7;
+    const HASH_LEN_FE: usize = 8;
 
     const CAPACITY: usize = 9;
 
@@ -91,21 +91,18 @@ pub mod lifetime_2_to_the_6 {
 
     const LOG_LIFETIME: usize = 6;
 
-    // KoalaBear: p = 2^31 - 2^24 + 1 = 127 * 8^8 + 1
-    // w=8, z=8, Q=127, alpha=1
     const DIMENSION: usize = 46;
     const BASE: usize = 8;
+    const TARGET_SUM: usize = 200;
     const Z: usize = 8;
     const Q: usize = 127;
 
-    // TODO
     const PARAMETER_LEN: usize = 5;
     const TWEAK_LEN_FE: usize = 2;
     const MSG_LEN_FE: usize = 9;
     const RAND_LEN_FE: usize = 7;
     const HASH_LEN_FE: usize = 8;
 
-    const TH_HASH_LEN_FE: usize = 8;
     const CAPACITY: usize = 9;
 
     type MH = AbortingHypercubeMessageHash<
@@ -120,10 +117,8 @@ pub mod lifetime_2_to_the_6 {
         MSG_LEN_FE,
     >;
 
-    const TARGET_SUM: usize = 200;
-
-    type TH = PoseidonTweakHash<PARAMETER_LEN, TH_HASH_LEN_FE, TWEAK_LEN_FE, CAPACITY, DIMENSION>;
-    type PRF = ShakePRFtoF<TH_HASH_LEN_FE, RAND_LEN_FE>;
+    type TH = PoseidonTweakHash<PARAMETER_LEN, HASH_LEN_FE, TWEAK_LEN_FE, CAPACITY, DIMENSION>;
+    type PRF = ShakePRFtoF<HASH_LEN_FE, RAND_LEN_FE>;
     type IE = TargetSumEncoding<MH, TARGET_SUM>;
 
     pub type SIGAbortingLifetime6Dim46Base8 =
