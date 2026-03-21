@@ -43,10 +43,10 @@ pub mod lifetime_2_to_the_32 {
     type PRF = ShakePRFtoF<HASH_LEN_FE, RAND_LEN_FE>;
     type IE = TargetSumEncoding<MH, TARGET_SUM>;
 
-    pub type SIGTopLevelTargetSumLifetime32Dim64Base8 =
+    pub type SIGAbortingTargetSumLifetime32Dim64Base8 =
         GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
-    pub type PubKeyTopLevelTargetSumLifetime32Dim64Base8 = GeneralizedXMSSPublicKey<TH>;
-    pub type SigTopLevelTargetSumLifetime32Dim64Base8 = GeneralizedXMSSSignature<IE, TH>;
+    pub type PubKeyAbortingTargetSumLifetime32Dim64Base8 = GeneralizedXMSSPublicKey<TH>;
+    pub type SigAbortingTargetSumLifetime32Dim64Base8 = GeneralizedXMSSSignature<IE, TH>;
 
     #[cfg(test)]
     mod test {
@@ -62,15 +62,15 @@ pub mod lifetime_2_to_the_32 {
         #[test]
         #[cfg(feature = "slow-tests")]
         pub fn test_correctness() {
-            test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime32Dim64Base8>(
+            test_signature_scheme_correctness::<SIGAbortingTargetSumLifetime32Dim64Base8>(
                 213,
                 0,
-                SIGTopLevelTargetSumLifetime32Dim64Base8::LIFETIME as usize,
+                SIGAbortingTargetSumLifetime32Dim64Base8::LIFETIME as usize,
             );
-            test_signature_scheme_correctness::<SIGTopLevelTargetSumLifetime32Dim64Base8>(
+            test_signature_scheme_correctness::<SIGAbortingTargetSumLifetime32Dim64Base8>(
                 4,
                 0,
-                SIGTopLevelTargetSumLifetime32Dim64Base8::LIFETIME as usize,
+                SIGAbortingTargetSumLifetime32Dim64Base8::LIFETIME as usize,
             );
         }
     }
@@ -121,7 +121,7 @@ pub mod lifetime_2_to_the_6 {
     type PRF = ShakePRFtoF<HASH_LEN_FE, RAND_LEN_FE>;
     type IE = TargetSumEncoding<MH, TARGET_SUM>;
 
-    pub type SIGAbortingLifetime6Dim46Base8 =
+    pub type SIGAbortingTargetSumLifetime6Dim46Base8 =
         GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
 
     #[cfg(test)]
@@ -130,19 +130,19 @@ pub mod lifetime_2_to_the_6 {
             SignatureScheme, test_templates::test_signature_scheme_correctness,
         };
 
-        use super::SIGAbortingLifetime6Dim46Base8;
+        use super::SIGAbortingTargetSumLifetime6Dim46Base8;
 
         #[test]
         pub fn test_correctness() {
-            test_signature_scheme_correctness::<SIGAbortingLifetime6Dim46Base8>(
+            test_signature_scheme_correctness::<SIGAbortingTargetSumLifetime6Dim46Base8>(
                 2,
                 0,
-                SIGAbortingLifetime6Dim46Base8::LIFETIME as usize,
+                SIGAbortingTargetSumLifetime6Dim46Base8::LIFETIME as usize,
             );
-            test_signature_scheme_correctness::<SIGAbortingLifetime6Dim46Base8>(
+            test_signature_scheme_correctness::<SIGAbortingTargetSumLifetime6Dim46Base8>(
                 11,
                 0,
-                SIGAbortingLifetime6Dim46Base8::LIFETIME as usize,
+                SIGAbortingTargetSumLifetime6Dim46Base8::LIFETIME as usize,
             );
         }
     }
