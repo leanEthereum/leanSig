@@ -161,7 +161,7 @@ fn poseidon_safe_domain_separator<const OUT_LEN: usize>(
     poseidon_compress::<F, _, MERGE_COMPRESSION_WIDTH, OUT_LEN>(perm, &input)
 }
 
-/// Poseidon Sponge Hash Function
+/// Poseidon T-Sponge with "Replacement" Hash Function
 ///
 /// Absorbs an arbitrary-length input using the Poseidon sponge construction
 /// and outputs `OUT_LEN` field elements. Domain separation is achieved by
@@ -179,13 +179,22 @@ fn poseidon_safe_domain_separator<const OUT_LEN: usize>(
 /// - `input`: message to hash (any length).
 ///
 /// ### Sponge Construction
-/// This follows the classic sponge structure:
-/// - **Absorption**: inputs are added chunk-by-chunk into the first `rate` elements of the state.
-/// - **Squeezing**: outputs are read from the first `rate` elements of the state, permuted as needed.
+/// This follows the classic sponge structure with capacity-first layout:
+/// - The state is `[capacity | rate]`, i.e., the first elements hold the capacity,
+///   followed by the rate elements.
+/// - **Absorption**: inputs are written into the rate part of the state (`state[cap_len..]`).
+/// - **Squeezing**: outputs are read from the rate part of the state, permuted as needed.
+///
+/// ### "T-Sponge"
+/// This means we use Poseidon in compresson mode (not a permutation), at each step.
+///
+/// ### "Replacement"
+/// This means we "replace" the rate elements of the state with the input chunk, instead
+/// of adding (in the sense of finite field addition).
 ///
 /// ### Panics
 /// - If `capacity_value.len() >= WIDTH`
-fn poseidon_sponge<A, P, const WIDTH: usize, const OUT_LEN: usize>(
+fn poseidon_replacement_t_sponge<A, P, const WIDTH: usize, const OUT_LEN: usize>(
     perm: &P,
     capacity_value: &[A],
     input: &[A],
@@ -200,11 +209,12 @@ where
         capacity_value.len() < WIDTH,
         "Capacity length must be smaller than the state width."
     );
-    let rate = WIDTH - capacity_value.len();
+    let cap_len = capacity_value.len();
+    let rate = WIDTH - cap_len;
 
     // initialize
     let mut state = [A::ZERO; WIDTH];
-    state[rate..].copy_from_slice(capacity_value);
+    state[..cap_len].copy_from_slice(capacity_value);
 
     // Instead of converting the input to a vector, resizing and feeding the data into the
     // sponge, we instead fill in the vector from all chunks until we are left with a non
@@ -213,21 +223,23 @@ where
     // 1. fill in all full chunks and permute
     let mut it = input.chunks_exact(rate);
     for chunk in &mut it {
-        // add chunk elements into the first `rate` many elements of the `state`
-        for (s, &x) in state.iter_mut().take(rate).zip(chunk) {
-            *s += x;
+        // write chunk elements into the `rate` part of the state
+        for (s, &x) in state[cap_len..].iter_mut().zip(chunk) {
+            *s = x; // 'replacement' sponge
         }
-        perm.permute_mut(&mut state);
+        state = poseidon_compress::<A, _, WIDTH, WIDTH>(perm, &state); // T-sponge
     }
     // 2. Fill the remainder and pad with zeros.
     // NOTE: This zero-padding is secure for constant-size inputs but may be insecure elsewhere.
     if !it.remainder().is_empty() {
+        let num_remainder = it.remainder().len();
         for (i, x) in it.remainder().iter().enumerate() {
-            state[i] += *x;
+            state[cap_len + i] = *x;
         }
-        // Since we only *add* to the state, positions beyond the remainder remain zero
-        // (their initial value), so no explicit zero-padding is needed.
-        perm.permute_mut(&mut state);
+        for s in &mut state[cap_len + num_remainder..] {
+            *s = A::ZERO;
+        }
+        state = poseidon_compress::<A, _, WIDTH, WIDTH>(perm, &state); // T-sponge
     }
 
     // 3. squeeze
@@ -235,11 +247,11 @@ where
     let mut out_index = 0;
     while out_index < OUT_LEN {
         let chunk_size = (OUT_LEN - out_index).min(rate);
-        out[out_index..out_index + chunk_size].copy_from_slice(&state[..chunk_size]);
+        out[out_index..out_index + chunk_size].copy_from_slice(&state[cap_len..][..chunk_size]);
         out_index += chunk_size;
         if out_index < OUT_LEN {
             // no need to permute in last iteration, `state` is local variable
-            perm.permute_mut(&mut state);
+            state = poseidon_compress::<A, _, WIDTH, WIDTH>(perm, &state); // T-sponge
         }
     }
     out
@@ -249,7 +261,7 @@ where
 ///
 /// Note: HASH_LEN, TWEAK_LEN, CAPACITY, and PARAMETER_LEN must
 /// be given in the unit "number of field elements".
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct PoseidonTweakHash<
     const PARAMETER_LEN: usize,
     const HASH_LEN: usize,
@@ -343,18 +355,17 @@ impl<
 
         match message {
             [single] => {
-                // we compress parameter, tweak, message
+                // we compress message, parameter, tweak
                 let perm = poseidon1_16();
 
-                // Build input on stack: [parameter | tweak | message]
+                // Build input on stack: [message | parameter | tweak]
                 let mut combined_input = [F::ZERO; CHAIN_COMPRESSION_WIDTH];
-                combined_input[..PARAMETER_LEN].copy_from_slice(&parameter.0);
-                combined_input[PARAMETER_LEN..PARAMETER_LEN + TWEAK_LEN].copy_from_slice(&tweak_fe);
-                combined_input[PARAMETER_LEN + TWEAK_LEN..PARAMETER_LEN + TWEAK_LEN + HASH_LEN]
-                    .copy_from_slice(&single.0);
+                combined_input[..HASH_LEN].copy_from_slice(&single.0);
+                combined_input[HASH_LEN..][..PARAMETER_LEN].copy_from_slice(&parameter.0);
+                combined_input[HASH_LEN + PARAMETER_LEN..][..TWEAK_LEN].copy_from_slice(&tweak_fe);
 
                 FieldArray(
-                    poseidon_compress::<F, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
+                    poseidon_compress::<_, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
                         &perm,
                         &combined_input,
                     ),
@@ -376,7 +387,7 @@ impl<
                     .copy_from_slice(&right.0);
 
                 FieldArray(
-                    poseidon_compress::<F, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
+                    poseidon_compress::<_, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
                         &perm,
                         &combined_input,
                     ),
@@ -400,11 +411,12 @@ impl<
                     HASH_LEN as u32,
                 ];
                 let capacity_value = poseidon_safe_domain_separator::<CAPACITY>(&perm, &lengths);
-                FieldArray(poseidon_sponge::<F, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
-                    &perm,
-                    &capacity_value,
-                    &combined_input,
-                ))
+                FieldArray(poseidon_replacement_t_sponge::<
+                    _,
+                    _,
+                    MERGE_COMPRESSION_WIDTH,
+                    HASH_LEN,
+                >(&perm, &capacity_value, &combined_input))
             }
             _ => FieldArray([F::ONE; HASH_LEN]), // Unreachable case, added for safety
         }
@@ -593,9 +605,10 @@ impl<
                 // Cache strategy: process one chain at a time to maximize locality.
                 // All epochs for that chain stay in registers across iterations.
 
-                // Offsets for chain compression: [parameter | tweak | current_value]
-                let chain_tweak_offset = PARAMETER_LEN;
-                let chain_value_offset = PARAMETER_LEN + TWEAK_LEN;
+                // Offsets for chain compression: [current_value | parameter | tweak]
+                let chain_value_offset = 0;
+                let chain_parameter_offset = HASH_LEN;
+                let chain_tweak_offset = HASH_LEN + PARAMETER_LEN;
 
                 for (chain_index, packed_chain) in
                     packed_chains.iter_mut().enumerate().take(num_chains)
@@ -607,11 +620,17 @@ impl<
                         let pos = (step + 1) as u8;
 
                         // Assemble the packed input for the hash function.
-                        // Layout: [parameter | tweak | current_value]
+                        // Layout: [current_value | parameter | tweak]
                         let mut packed_input = [PackedF::ZERO; CHAIN_COMPRESSION_WIDTH];
 
+                        // Copy current chain value (already packed)
+                        packed_input[chain_value_offset..chain_value_offset + HASH_LEN]
+                            .copy_from_slice(packed_chain);
+
                         // Copy pre-packed parameter
-                        packed_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
+                        packed_input
+                            [chain_parameter_offset..chain_parameter_offset + PARAMETER_LEN]
+                            .copy_from_slice(&packed_parameter);
 
                         // Pack tweaks directly into destination
                         pack_fn_into::<TWEAK_LEN>(
@@ -622,10 +641,6 @@ impl<
                                     .to_field_elements::<TWEAK_LEN>()[t_idx]
                             },
                         );
-
-                        // Copy current chain value (already packed)
-                        packed_input[chain_value_offset..chain_value_offset + HASH_LEN]
-                            .copy_from_slice(packed_chain);
 
                         // Apply the hash function to advance the chain.
                         // This single call processes all epochs in parallel.
@@ -678,7 +693,7 @@ impl<
 
                     // Apply the sponge hash to produce the leaf.
                     // This absorbs all chain ends and squeezes out the final hash.
-                    poseidon_sponge::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
+                    poseidon_replacement_t_sponge::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
                         &sponge_perm,
                         &capacity_val,
                         packed_leaf_input,
