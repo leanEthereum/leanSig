@@ -49,6 +49,7 @@ pub mod lifetime_2_to_the_18 {
     #[cfg(all(test, feature = "slow-tests"))]
     mod test {
 
+        #[cfg(feature = "slow-tests")]
         use crate::signature::{
             SignatureScheme,
             generalized_xmss::instantiations_poseidon_top_level::lifetime_2_to_the_18::SIGTopLevelTargetSumLifetime18Dim64Base8,
@@ -130,6 +131,7 @@ pub mod lifetime_2_to_the_32 {
         #[cfg(all(test, feature = "slow-tests"))]
         mod test {
 
+            #[cfg(feature = "slow-tests")]
             use super::*;
             use crate::signature::{
                 SignatureScheme, test_templates::test_signature_scheme_correctness,
@@ -204,6 +206,7 @@ pub mod lifetime_2_to_the_32 {
         #[cfg(all(test, feature = "slow-tests"))]
         mod test {
 
+            #[cfg(feature = "slow-tests")]
             use super::*;
             use crate::signature::{
                 SignatureScheme, test_templates::test_signature_scheme_correctness,
@@ -277,6 +280,7 @@ pub mod lifetime_2_to_the_32 {
         #[cfg(all(test, feature = "slow-tests"))]
         mod test {
 
+            #[cfg(feature = "slow-tests")]
             use super::*;
             use crate::signature::{
                 SignatureScheme, test_templates::test_signature_scheme_correctness,
@@ -359,6 +363,7 @@ pub mod lifetime_2_to_the_8 {
             SignatureScheme, test_templates::test_signature_scheme_correctness,
         };
 
+        #[cfg(feature = "slow-tests")]
         use super::SIGTopLevelTargetSumLifetime8Dim64Base8;
 
         #[test]
