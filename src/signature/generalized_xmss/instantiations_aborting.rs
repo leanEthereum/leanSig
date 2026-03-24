@@ -4,7 +4,8 @@ pub mod lifetime_2_to_the_32 {
     use crate::{
         inc_encoding::target_sum::TargetSumEncoding,
         signature::generalized_xmss::{
-            GeneralizedXMSSPublicKey, GeneralizedXMSSSecretKey, GeneralizedXMSSSignature, GeneralizedXMSSSignatureScheme
+            GeneralizedXMSSPublicKey, GeneralizedXMSSSecretKey, GeneralizedXMSSSignature,
+            GeneralizedXMSSSignatureScheme,
         },
         symmetric::{
             message_hash::aborting::AbortingHypercubeMessageHash, prf::shake_to_field::ShakePRFtoF,
@@ -46,14 +47,15 @@ pub mod lifetime_2_to_the_32 {
     pub type SchemeAbortingTargetSumLifetime32Dim64Base8 =
         GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
     pub type PubKeyAbortingTargetSumLifetime32Dim64Base8 = GeneralizedXMSSPublicKey<TH>;
-    pub type SecretKeyAbortingTargetSumLifetime32Dim64Base8 = GeneralizedXMSSSecretKey<PRF, IE, TH, LOG_LIFETIME>;
+    pub type SecretKeyAbortingTargetSumLifetime32Dim64Base8 =
+        GeneralizedXMSSSecretKey<PRF, IE, TH, LOG_LIFETIME>;
     pub type SigAbortingTargetSumLifetime32Dim64Base8 = GeneralizedXMSSSignature<IE, TH>;
 
     #[cfg(test)]
     mod test {
 
         #[cfg(feature = "slow-tests")]
-        use super::*;
+        use super::SchemeAbortingTargetSumLifetime32Dim64Base8;
         #[cfg(feature = "slow-tests")]
         use crate::signature::SignatureScheme;
 
@@ -63,15 +65,15 @@ pub mod lifetime_2_to_the_32 {
         #[test]
         #[cfg(feature = "slow-tests")]
         pub fn test_correctness() {
-            test_signature_scheme_correctness::<SIGAbortingTargetSumLifetime32Dim64Base8>(
+            test_signature_scheme_correctness::<SchemeAbortingTargetSumLifetime32Dim64Base8>(
                 213,
                 0,
-                SIGAbortingTargetSumLifetime32Dim64Base8::LIFETIME as usize,
+                SchemeAbortingTargetSumLifetime32Dim64Base8::LIFETIME as usize,
             );
-            test_signature_scheme_correctness::<SIGAbortingTargetSumLifetime32Dim64Base8>(
+            test_signature_scheme_correctness::<SchemeAbortingTargetSumLifetime32Dim64Base8>(
                 4,
                 0,
-                SIGAbortingTargetSumLifetime32Dim64Base8::LIFETIME as usize,
+                SchemeAbortingTargetSumLifetime32Dim64Base8::LIFETIME as usize,
             );
         }
     }
