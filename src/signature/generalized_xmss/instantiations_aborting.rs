@@ -44,18 +44,18 @@ pub mod lifetime_2_to_the_32 {
     type PRF = ShakePRFtoF<HASH_LEN_FE, RAND_LEN_FE>;
     type IE = TargetSumEncoding<MH, TARGET_SUM>;
 
-    pub type SchemeAbortingTargetSumLifetime32Dim64Base8 =
+    pub type SchemeAbortingTargetSumLifetime32Dim46Base8 =
         GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
-    pub type PubKeyAbortingTargetSumLifetime32Dim64Base8 = GeneralizedXMSSPublicKey<TH>;
-    pub type SecretKeyAbortingTargetSumLifetime32Dim64Base8 =
+    pub type PubKeyAbortingTargetSumLifetime32Dim46Base8 = GeneralizedXMSSPublicKey<TH>;
+    pub type SecretKeyAbortingTargetSumLifetime32Dim46Base8 =
         GeneralizedXMSSSecretKey<PRF, IE, TH, LOG_LIFETIME>;
-    pub type SigAbortingTargetSumLifetime32Dim64Base8 = GeneralizedXMSSSignature<IE, TH>;
+    pub type SigAbortingTargetSumLifetime32Dim46Base8 = GeneralizedXMSSSignature<IE, TH>;
 
     #[cfg(test)]
     mod test {
 
         #[cfg(feature = "slow-tests")]
-        use super::SchemeAbortingTargetSumLifetime32Dim64Base8;
+        use super::SchemeAbortingTargetSumLifetime32Dim46Base8;
         #[cfg(feature = "slow-tests")]
         use crate::signature::SignatureScheme;
 
@@ -65,15 +65,15 @@ pub mod lifetime_2_to_the_32 {
         #[test]
         #[cfg(feature = "slow-tests")]
         pub fn test_correctness() {
-            test_signature_scheme_correctness::<SchemeAbortingTargetSumLifetime32Dim64Base8>(
+            test_signature_scheme_correctness::<SchemeAbortingTargetSumLifetime32Dim46Base8>(
                 213,
                 0,
-                SchemeAbortingTargetSumLifetime32Dim64Base8::LIFETIME as usize,
+                SchemeAbortingTargetSumLifetime32Dim46Base8::LIFETIME as usize,
             );
-            test_signature_scheme_correctness::<SchemeAbortingTargetSumLifetime32Dim64Base8>(
+            test_signature_scheme_correctness::<SchemeAbortingTargetSumLifetime32Dim46Base8>(
                 4,
                 0,
-                SchemeAbortingTargetSumLifetime32Dim64Base8::LIFETIME as usize,
+                SchemeAbortingTargetSumLifetime32Dim46Base8::LIFETIME as usize,
             );
         }
     }
@@ -85,7 +85,10 @@ pub mod lifetime_2_to_the_32 {
 pub mod lifetime_2_to_the_6 {
     use crate::{
         inc_encoding::target_sum::TargetSumEncoding,
-        signature::generalized_xmss::GeneralizedXMSSSignatureScheme,
+        signature::generalized_xmss::{
+            GeneralizedXMSSPublicKey, GeneralizedXMSSSecretKey, GeneralizedXMSSSignature,
+            GeneralizedXMSSSignatureScheme,
+        },
         symmetric::{
             message_hash::aborting::AbortingHypercubeMessageHash, prf::shake_to_field::ShakePRFtoF,
             tweak_hash::poseidon::PoseidonTweakHash,
@@ -126,14 +129,18 @@ pub mod lifetime_2_to_the_6 {
 
     pub type SchemeAbortingTargetSumLifetime6Dim46Base8 =
         GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
+    pub type PubKeyAbortingTargetSumLifetime6Dim46Base8 = GeneralizedXMSSPublicKey<TH>;
+    pub type SecretKeyAbortingTargetSumLifetime6Dim46Base8 =
+        GeneralizedXMSSSecretKey<PRF, IE, TH, LOG_LIFETIME>;
+    pub type SigAbortingTargetSumLifetime6Dim46Base8 = GeneralizedXMSSSignature<IE, TH>;
 
     #[cfg(test)]
     mod test {
         use crate::signature::{
-            SignatureScheme, test_templates::test_signature_scheme_correctness,
+            SignatureScheme,
+            generalized_xmss::instantiations_aborting::lifetime_2_to_the_6::SchemeAbortingTargetSumLifetime6Dim46Base8,
+            test_templates::test_signature_scheme_correctness,
         };
-
-        use super::SchemeAbortingTargetSumLifetime6Dim46Base8;
 
         #[test]
         pub fn test_correctness() {
