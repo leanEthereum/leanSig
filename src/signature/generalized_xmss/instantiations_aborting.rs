@@ -82,7 +82,7 @@ pub mod lifetime_2_to_the_32 {
 /// Instantiations with Lifetime 2^6. This is for testing purposes only.
 ///
 /// Warning: Should not be used in production environments.
-pub mod lifetime_2_to_the_6 {
+pub mod lifetime_2_to_the_8 {
     use crate::{
         inc_encoding::target_sum::TargetSumEncoding,
         signature::generalized_xmss::{
@@ -95,7 +95,7 @@ pub mod lifetime_2_to_the_6 {
         },
     };
 
-    const LOG_LIFETIME: usize = 6;
+    const LOG_LIFETIME: usize = 8;
 
     const DIMENSION: usize = 46;
     const BASE: usize = 8;
@@ -127,32 +127,32 @@ pub mod lifetime_2_to_the_6 {
     type PRF = ShakePRFtoF<HASH_LEN_FE, RAND_LEN_FE>;
     type IE = TargetSumEncoding<MH, TARGET_SUM>;
 
-    pub type SchemeAbortingTargetSumLifetime6Dim46Base8 =
+    pub type SchemeAbortingTargetSumLifetime8Dim46Base8 =
         GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
-    pub type PubKeyAbortingTargetSumLifetime6Dim46Base8 = GeneralizedXMSSPublicKey<TH>;
-    pub type SecretKeyAbortingTargetSumLifetime6Dim46Base8 =
+    pub type PubKeyAbortingTargetSumLifetime8Dim46Base8 = GeneralizedXMSSPublicKey<TH>;
+    pub type SecretKeyAbortingTargetSumLifetime8Dim46Base8 =
         GeneralizedXMSSSecretKey<PRF, IE, TH, LOG_LIFETIME>;
-    pub type SigAbortingTargetSumLifetime6Dim46Base8 = GeneralizedXMSSSignature<IE, TH>;
+    pub type SigAbortingTargetSumLifetime8Dim46Base8 = GeneralizedXMSSSignature<IE, TH>;
 
     #[cfg(test)]
     mod test {
         use crate::signature::{
             SignatureScheme,
-            generalized_xmss::instantiations_aborting::lifetime_2_to_the_6::SchemeAbortingTargetSumLifetime6Dim46Base8,
+            generalized_xmss::instantiations_aborting::lifetime_2_to_the_8::SchemeAbortingTargetSumLifetime8Dim46Base8,
             test_templates::test_signature_scheme_correctness,
         };
 
         #[test]
         pub fn test_correctness() {
-            test_signature_scheme_correctness::<SchemeAbortingTargetSumLifetime6Dim46Base8>(
+            test_signature_scheme_correctness::<SchemeAbortingTargetSumLifetime8Dim46Base8>(
                 2,
                 0,
-                SchemeAbortingTargetSumLifetime6Dim46Base8::LIFETIME as usize,
+                SchemeAbortingTargetSumLifetime8Dim46Base8::LIFETIME as usize,
             );
-            test_signature_scheme_correctness::<SchemeAbortingTargetSumLifetime6Dim46Base8>(
+            test_signature_scheme_correctness::<SchemeAbortingTargetSumLifetime8Dim46Base8>(
                 11,
                 0,
-                SchemeAbortingTargetSumLifetime6Dim46Base8::LIFETIME as usize,
+                SchemeAbortingTargetSumLifetime8Dim46Base8::LIFETIME as usize,
             );
         }
     }
