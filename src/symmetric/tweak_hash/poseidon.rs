@@ -191,7 +191,7 @@ fn poseidon_safe_domain_separator<const OUT_LEN: usize>(
 ///
 /// ### Panics
 /// - If `capacity_value.len() >= WIDTH`
-fn poseidon_replacement_t_sponge<A, P, const WIDTH: usize, const OUT_LEN: usize>(
+fn poseidon_replacement_sponge<A, P, const WIDTH: usize, const OUT_LEN: usize>(
     perm: &P,
     capacity_value: &[A],
     input: &[A],
@@ -408,7 +408,7 @@ impl<
                     HASH_LEN as u32,
                 ];
                 let capacity_value = poseidon_safe_domain_separator::<CAPACITY>(&perm, &lengths);
-                FieldArray(poseidon_replacement_t_sponge::<
+                FieldArray(poseidon_replacement_sponge::<
                     _,
                     _,
                     MERGE_COMPRESSION_WIDTH,
@@ -690,7 +690,7 @@ impl<
 
                     // Apply the sponge hash to produce the leaf.
                     // This absorbs all chain ends and squeezes out the final hash.
-                    poseidon_replacement_t_sponge::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
+                    poseidon_replacement_sponge::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
                         &sponge_perm,
                         &capacity_val,
                         packed_leaf_input,
