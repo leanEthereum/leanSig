@@ -675,12 +675,33 @@ where
                 LOG_LIFETIME.is_multiple_of(2),
                 "Generalized XMSS: LOG_LIFETIME must be multiple of two"
             );
+
+            // sign() and verify() take epoch as u32, so LOG_LIFETIME > 32 would create
+            // epochs unreachable by the signing/verification API.
+            assert!(
+                LOG_LIFETIME <= 32,
+                "Generalized XMSS: LOG_LIFETIME must be at most 32 (epoch type is u32)"
+            );
         }
 
-        // checks for `activation_epoch` and `num_active_epochs`
+        // Overflow-safe validation of the requested activation interval.
+        // Performed entirely in u64 to avoid truncation on 32-bit targets
+        // (where `Self::LIFETIME as usize` would truncate 1u64 << 32 to 0).
+        let requested_end = (activation_epoch as u64)
+            .checked_add(num_active_epochs as u64)
+            .expect("Key gen: activation interval overflowed u64");
+
         assert!(
-            activation_epoch + num_active_epochs <= Self::LIFETIME as usize,
-            "Key gen: `activation_epoch` and `num_active_epochs` are invalid for this lifetime"
+            requested_end <= Self::LIFETIME,
+            "Key gen: requested interval [{}..{}) exceeds LIFETIME {}",
+            activation_epoch,
+            requested_end,
+            Self::LIFETIME
+        );
+
+        assert!(
+            num_active_epochs > 0,
+            "Key gen: num_active_epochs must be non-zero"
         );
 
         // Note: this implementation uses the top-bottom tree approach, which is as follows:
