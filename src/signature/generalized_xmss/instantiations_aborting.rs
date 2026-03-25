@@ -97,9 +97,9 @@ pub mod lifetime_2_to_the_8 {
 
     const LOG_LIFETIME: usize = 8;
 
-    const DIMENSION: usize = 46;
+    const DIMENSION: usize = 4;
     const BASE: usize = 8;
-    const TARGET_SUM: usize = 200;
+    const TARGET_SUM: usize = 6;
     const Z: usize = 8;
     const Q: usize = 127;
 
