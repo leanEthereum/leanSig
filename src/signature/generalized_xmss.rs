@@ -1029,9 +1029,6 @@ impl<PRF: Pseudorandom, IE: IncomparableEncoding, TH: TweakableHash, const LOG_L
 pub mod instantiations_aborting;
 /// Instantiations of the generalized XMSS signature scheme based on Poseidon1
 pub mod instantiations_poseidon;
-/// Instantiations of the generalized XMSS signature scheme based on the
-/// top level target sum encoding using Poseidon1
-pub mod instantiations_poseidon_top_level;
 
 #[cfg(test)]
 mod tests {

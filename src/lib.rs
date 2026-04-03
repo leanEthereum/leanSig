@@ -15,7 +15,6 @@ type F = KoalaBear;
 pub(crate) type PackedF = <F as Field>::Packing;
 
 pub mod array;
-pub(crate) mod hypercube;
 pub mod inc_encoding;
 pub mod serialization;
 pub mod signature;

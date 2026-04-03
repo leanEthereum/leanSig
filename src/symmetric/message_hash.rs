@@ -41,4 +41,3 @@ pub trait MessageHash {
 
 pub mod aborting;
 pub mod poseidon;
-pub mod top_level_poseidon;
