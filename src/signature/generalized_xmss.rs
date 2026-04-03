@@ -678,11 +678,13 @@ where
 
             // sign() and verify() take epoch as u32, so LOG_LIFETIME > 32 would create
             // epochs unreachable by the signing/verification API.
-          const {  assert!(
-                LOG_LIFETIME <= 32,
-                "Generalized XMSS: LOG_LIFETIME must be at most 32 (epoch type is u32)"
-            ); }
-}
+            const {
+                assert!(
+                    LOG_LIFETIME <= 32,
+                    "Generalized XMSS: LOG_LIFETIME must be at most 32 (epoch type is u32)"
+                );
+            }
+        }
 
         // Overflow-safe validation of the requested activation interval.
         // Performed entirely in u64 to avoid truncation on 32-bit targets
