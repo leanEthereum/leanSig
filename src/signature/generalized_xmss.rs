@@ -658,32 +658,91 @@ where
         activation_epoch: usize,
         num_active_epochs: usize,
     ) -> (Self::PublicKey, Self::SecretKey) {
+        // Compile-time parameter validation for Generalized XMSS
+        //
+        // This implements Construction 3 (Generalized XMSS) from DKKW25.
+        // The scheme structure is:
+        //
+        //   Public key:  pk = (root, P)  where root is a Merkle root over
+        //                L = 2^h one-time public keys.
+        //
+        //   Signature:   σ = (ρ, σ_OTS, path_ep)
+        //     - ρ:        randomness for the incomparable encoding
+        //     - σ_OTS:    v chain hashes  (one per chain)
+        //     - path_ep:  Merkle authentication path of length h
+        //
+        // Key generation builds the Merkle tree using the "top-bottom"
+        // approach: the full tree of depth h is split at h/2 into one
+        // top tree and sqrt(L) bottom trees, enabling a sliding window of
+        // two bottom trees in the secret key.
+        //
+        // DKKW25: "Hash-Based Multi-Signatures for Post-Quantum Ethereum"
+        //          (DKKW25, IACR CiC 2(1), 2025)
         const {
-            // assert BASE and DIMENSION are small enough to make sure that we can fit
-            // pos_in_chain and chain_index in u8.
+            // Encoding well-formedness
+            //
+            // Definition 13 (DKKW25): the incomparable encoding maps
+            // messages to codewords x ∈ C ⊆ {0, ..., w-1}^v. For the
+            // incomparability property to hold, we need:
+            //   - w >= 2:  a single-element alphabet makes all codewords
+            //              identical, so incomparability is vacuous.
+            //   - v >= 1:  codewords must have at least one coordinate.
+            assert!(
+                IE::BASE >= 2,
+                "Generalized XMSS: Encoding base (w) must be at least 2"
+            );
+            assert!(
+                IE::DIMENSION >= 1,
+                "Generalized XMSS: Encoding dimension (v) must be at least 1"
+            );
+
+            // Representation constraints
+            //
+            // The chain tweak function (Eq. 17, DKKW25) encodes:
+            //
+            //   tweak(ep, i, k) = (0x00 || ep    || i     || k)
+            //                      8 bits  ceil(log L)  ceil(log v)  w bits
+            //
+            // chain_index `i` and pos_in_chain `k` are stored as u8, and
+            // chunk values in signatures are also u8. Therefore:
+            //   - BASE (= w)      <= 256   (chunk fits in u8)
+            //   - DIMENSION (= v) <= 256   (chain_index fits in u8)
             assert!(
                 IE::BASE <= 1 << 8,
-                "Generalized XMSS: Encoding base too large, must be at most 2^8"
+                "Generalized XMSS: Encoding base (w) must fit in u8 (<= 256)"
             );
             assert!(
                 IE::DIMENSION <= 1 << 8,
-                "Generalized XMSS: Encoding dimension too large, must be at most 2^8"
+                "Generalized XMSS: Encoding dimension (v) must fit in u8 (<= 256)"
             );
 
-            // LOG_LIFETIME needs to be even, so that we can use the top-bottom tree approach
+            // Merkle tree structure
+            //
+            // The key lifetime is L = 2^LOG_LIFETIME epochs. The Merkle tree
+            // has depth h = LOG_LIFETIME, with L leaves (one per epoch).
+            //
+            // The top-bottom optimization splits the tree at depth h/2,
+            // creating one top tree of depth h/2 and sqrt(L) bottom trees of
+            // depth h/2. This requires h to be even.
             assert!(
                 LOG_LIFETIME.is_multiple_of(2),
-                "Generalized XMSS: LOG_LIFETIME must be multiple of two"
+                "Generalized XMSS: LOG_LIFETIME must be even (top-bottom tree split)"
             );
 
-            // sign() and verify() take epoch as u32, so LOG_LIFETIME > 32 would create
-            // epochs unreachable by the signing/verification API.
-            const {
-                assert!(
-                    LOG_LIFETIME <= 32,
-                    "Generalized XMSS: LOG_LIFETIME must be at most 32 (epoch type is u32)"
-                );
-            }
+            // The smallest valid even LOG_LIFETIME is 2, giving L = 4 epochs,
+            // a top tree of depth 1, and 2 bottom trees of depth 1.
+            // LOG_LIFETIME = 0 would mean L = 1 (no internal Merkle nodes).
+            assert!(
+                LOG_LIFETIME >= 2,
+                "Generalized XMSS: LOG_LIFETIME must be at least 2"
+            );
+
+            // The sign() and verify() APIs take the epoch as u32, so
+            // LOG_LIFETIME > 32 would create epochs that cannot be addressed.
+            assert!(
+                LOG_LIFETIME <= 32,
+                "Generalized XMSS: LOG_LIFETIME must be at most 32 (epoch is u32)"
+            );
         }
 
         // Overflow-safe validation of the requested activation interval.

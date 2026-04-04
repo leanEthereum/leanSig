@@ -300,37 +300,97 @@ impl<
         tweak: &Self::Tweak,
         message: &[Self::Domain],
     ) -> Self::Domain {
+        // Compile-time parameter validation for PoseidonTweakHash
+        //
+        // This implements the tweakable hash function Th from §7.3.2 of
+        // DKKW25. It is used in three distinct contexts:
+        //
+        //   (1) Chain hashing:  Th(P, T, M)  for  M ∈ H         (width 16)
+        //   (2) Tree hashing:   Th(P, T, M)  for  M ∈ H²        (width 24)
+        //   (3) Leaf hashing:   Th(P, T, M)  for  M ∈ H^v       (sponge)
+        //
+        // The tweak T provides domain separation, ensuring that each
+        // hash invocation in the scheme uses a unique (ep, i, k) or
+        // (level, pos) address. This is essential for the multi-target
+        // security reductions in Theorem 1 (DKKW25).
+        //
+        // DKKW25: "Hash-Based Multi-Signatures for Post-Quantum Ethereum"
+        //          (DKKW25, IACR CiC 2(1), 2025)
         const {
+            // The hash output space H = F_p^η (Parameter Req. 3, DKKW25)
+            // and public parameter space P = F_p^l_p must both be non-empty.
             assert!(
-                CAPACITY < 24,
-                "Poseidon Tweak Chain Hash: Capacity must be less than 24"
+                HASH_LEN >= 1,
+                "Poseidon Tweak Hash: HASH_LEN (η) must be at least 1"
             );
             assert!(
-                PARAMETER_LEN + TWEAK_LEN + HASH_LEN <= 16,
-                "Poseidon Tweak Chain Hash: Input lengths too large for Poseidon instance"
-            );
-            assert!(
-                PARAMETER_LEN + TWEAK_LEN + 2 * HASH_LEN <= 24,
-                "Poseidon Tweak Tree Hash: Input lengths too large for Poseidon instance"
+                PARAMETER_LEN >= 1,
+                "Poseidon Tweak Hash: PARAMETER_LEN (l_p) must be at least 1"
             );
 
-            // floor(log2(ORDER))
+            // Poseidon capacity for sponge mode
+            //
+            // Leaf hashing (case 3) uses a sponge construction with
+            // rate = 24 - CAPACITY. The capacity must leave room for at
+            // least one rate element, so CAPACITY < 24.
+            //
+            // The capacity also controls the sponge security level:
+            // classical security ≤ c·log(p)/2 bits (§7.3, DKKW25, Eq. 21).
+            assert!(
+                CAPACITY < 24,
+                "Poseidon Tweak Hash: Capacity must be less than 24"
+            );
+
+            // Compression mode width constraints
+            //
+            // Case (1) — Chain hashing: uses PoseidonCompress with width 16.
+            // Input layout: [P || T || M] must fit in 16 field elements.
+            assert!(
+                PARAMETER_LEN + TWEAK_LEN + HASH_LEN <= 16,
+                "Poseidon Tweak Chain Hash: P+T+M exceeds width-16 capacity"
+            );
+
+            // Case (2) — Tree hashing: uses PoseidonCompress with width 24.
+            // Input layout: [P || T || left || right] must fit in 24 elements.
+            assert!(
+                PARAMETER_LEN + TWEAK_LEN + 2 * HASH_LEN <= 24,
+                "Poseidon Tweak Tree Hash: P+T+2H exceeds width-24 capacity"
+            );
+
+            // Leaf hashing domain separator
+            //
+            // Case (3) — Leaf hashing: the sponge capacity value V_c is
+            // derived from 4 domain parameters (each 32 bits = 128 bits
+            // total) via a width-24 Poseidon compression. The full 24
+            // field elements must have enough bit capacity.
             let bits_per_fe = F::ORDER_U64.ilog2() as usize;
             assert!(
                 bits_per_fe * 24 >= DOMAIN_PARAMETERS_LENGTH * 32,
-                "Poseidon Tweak Leaf Hash: not enough field elements to hash the domain separator"
+                "Poseidon Tweak Leaf Hash: width-24 cannot hold domain separator"
             );
 
-            // tree tweak: 32 (pos_in_level) + 8 (level) = 40 bits
-            // chain tweak: 32 (epoch) + 8 (chain_index) + 8 (pos_in_chain) + 8 (separator) = 56 bits
+            // Tweak encoding capacity
+            //
+            // The tweak functions (Eqs. 17-18, DKKW25) pack structured
+            // addresses into TWEAK_LEN field elements. The two formats are:
+            //
+            //   Tree tweak  (Eq. 18):  (0x01 || level || pos_in_level)
+            //     separator: 8 bits, level: ceil(log(h)) bits, pos: ceil(log L) bits
+            //     Minimum: 8 + 32 = 40 bits  (level fits in remaining bits)
+            //
+            //   Chain tweak (Eq. 17):  (0x00 || epoch || chain_index || pos_in_chain)
+            //     separator: 8 bits, epoch: 32 bits, chain_index: 8 bits, pos: 8 bits
+            //     Total: 56 bits
+            //
+            // The field element capacity must accommodate the wider format.
             let tweak_fe_bits = bits_per_fe * TWEAK_LEN;
             assert!(
                 tweak_fe_bits >= 40,
-                "Poseidon Tweak Hash: not enough field elements to encode the tree tweak"
+                "Poseidon Tweak Hash: TWEAK_LEN too small for tree tweak (need >= 40 bits)"
             );
             assert!(
                 tweak_fe_bits >= 56,
-                "Poseidon Tweak Hash: not enough field elements to encode the chain tweak"
+                "Poseidon Tweak Hash: TWEAK_LEN too small for chain tweak (need >= 56 bits)"
             );
         }
 

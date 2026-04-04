@@ -61,8 +61,33 @@ impl<MH: MessageHash, const TARGET_SUM: usize> IncomparableEncoding
         randomness: &Self::Randomness,
         epoch: u32,
     ) -> Result<Vec<u8>, Self::Error> {
+        // Compile-time parameter validation for Target Sum Encoding
+        //
+        // This encoding implements Construction 6 (IE for Target Sum Winternitz)
+        // from DKKW25. It maps a message to a codeword x ∈ C ⊆ Z_w^v, where:
+        //
+        //   C = { (x_1, ..., x_v) ∈ {0, ..., w-1}^v  |  Σ x_i = T }
+        //
+        // The code C enforces the *incomparability* property (Definition 13):
+        // no two distinct codewords x, x' satisfy x_i ≥ x'_i for all i.
+        // This is critical for the security of the XMSS signature scheme.
+        //
+        // DKKW25: "Hash-Based Multi-Signatures for Post-Quantum Ethereum"
+        //          (DKKW25, IACR CiC 2(1), 2025)
+        // HHKTW26: "Aborting Random Oracles" (ePrint 2026/016)
         const {
-            // base and dimension must not be too large
+            // Representation constraints
+            //
+            // In the Generalized XMSS construction (Construction 3, DKKW25),
+            // each chain position and chain index is encoded as a single byte
+            // in the tweak function (Eq. 17):
+            //
+            //   tweak(ep, i, k) = (0x00 || ep || i || k)
+            //                      8b     ⌈log L⌉  ⌈log v⌉  w bits
+            //
+            // - Since chain_index `i` is stored as u8, we need v ≤ 256.
+            // - Since pos_in_chain `k` is stored as u8, we need w ≤ 256.
+            // - Codeword entries (chunks) are also stored as u8 in signatures.
             assert!(
                 MH::BASE <= 1 << 8,
                 "Target Sum Encoding: Base must be at most 2^8"
@@ -70,6 +95,36 @@ impl<MH: MessageHash, const TARGET_SUM: usize> IncomparableEncoding
             assert!(
                 MH::DIMENSION <= 1 << 8,
                 "Target Sum Encoding: Dimension must be at most 2^8"
+            );
+
+            // Encoding well-formedness
+            //
+            // Definition 13 (DKKW25): an incomparable encoding maps messages
+            // to codewords in {0, ..., w-1}^v. For the incomparability
+            // property to be meaningful, we need w ≥ 2 (otherwise every
+            // codeword is the zero vector, and distinct codewords cannot
+            // exist).
+            assert!(
+                MH::BASE >= 2,
+                "Target Sum Encoding: Base must be at least 2"
+            );
+
+            // Target sum range
+            //
+            // Construction 6 (DKKW25) defines the code:
+            //
+            //   C = { x ∈ {0,...,w-1}^v | Σ x_i = T }
+            //
+            // For C to be non-empty, T must be achievable: each x_i can
+            // contribute at most w-1 to the sum, so T ≤ v*(w-1). The lower
+            // bound T ≥ 0 is guaranteed by the usize type.
+            //
+            // Choosing T close to v*(w-1)/2 (the expected sum of a uniform
+            // hash) maximizes |C| and minimizes the signing retry rate
+            // (Lemma 7, DKKW25).
+            assert!(
+                TARGET_SUM <= MH::DIMENSION * (MH::BASE - 1),
+                "Target Sum Encoding: TARGET_SUM must be at most DIMENSION * (BASE - 1)"
             );
         }
 
