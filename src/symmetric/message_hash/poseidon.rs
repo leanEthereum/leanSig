@@ -186,15 +186,48 @@ where
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
     ) -> Result<Vec<u8>, Infallible> {
+        // Compile-time parameter validation for Poseidon Message Hash
+        //
+        // This hash implements Th_msg from §7.3.1 of DKKW25. It takes:
+        //
+        //   Th_msg(P, T, M, R) = Decode_{p,η',w}(
+        //       PoseidonCompress_{p, t_msg, η'}(R || P || EncT(T) || EncM(M))
+        //   )
+        //
+        // The output is a vector of DIMENSION chunks, each in {0, ..., BASE-1}.
+        // This is used inside the incomparable encoding to map (message, seed)
+        // to a hypercube vertex x ∈ Z_w^v before the target sum filter.
+        //
+        // DKKW25: "Hash-Based Multi-Signatures for Post-Quantum Ethereum"
+        //          (DKKW25, IACR CiC 2(1), 2025)
         const {
-            // Check that Poseidon of width 24 is enough
+            // Poseidon capacity constraints
+            //
+            // We use Poseidon in compression mode with a width-24 permutation.
+            // The entire input (R || P || T || M) must fit in one call, and
+            // the output η' field elements are extracted from the same state.
             assert!(
                 PARAMETER_LEN + TWEAK_LEN_FE + RAND_LEN_FE + MSG_LEN_FE <= 24,
-                "Poseidon of width 24 is not enough"
+                "Poseidon of width 24 is not enough for the input"
             );
-            assert!(HASH_LEN_FE <= 24, "Poseidon of width 24 is not enough");
+            assert!(
+                HASH_LEN_FE <= 24,
+                "Poseidon of width 24 is not enough for the output"
+            );
 
-            // Base and dimension check
+            // Non-trivial output
+            //
+            // The hash must produce at least one field element to be useful.
+            assert!(
+                HASH_LEN_FE >= 1,
+                "Poseidon Message Hash: HASH_LEN_FE must be at least 1"
+            );
+
+            // Representation constraints
+            //
+            // Construction 3 (DKKW25) stores chunk values and chain indices
+            // as u8 in the signature and tweak encodings (Eq. 17).
+            // BASE (= w) and DIMENSION (= v) must each fit in one byte.
             assert!(
                 BASE <= 1 << 8,
                 "Poseidon Message Hash: Base must be at most 2^8"
@@ -204,30 +237,53 @@ where
                 "Poseidon Message Hash: Dimension must be at most 2^8"
             );
 
-            // how many bits can be represented by one field element: floor(log2(ORDER))
-            let bits_per_fe = F::ORDER_U64.ilog2() as usize;
+            // Encoding well-formedness
+            //
+            // Definition 13 (DKKW25): the incomparable encoding maps into
+            // {0, ..., w-1}^v with w ≥ 2. A single-element alphabet makes
+            // the code trivial and incomparability vacuous.
+            assert!(BASE >= 2, "Poseidon Message Hash: BASE must be at least 2");
 
-            // Check that we have enough bits to encode message
+            // Injective encoding of inputs
+            //
+            // The message (32 bytes = 256 bits) is encoded into MSG_LEN_FE
+            // field elements via base-p decomposition. For this to be
+            // injective, the output space must be at least as large:
+            //
+            //   p^MSG_LEN_FE  ≥  2^(8 * MESSAGE_LENGTH)
+            //   ⟹  ⌊log2(p)⌋ * MSG_LEN_FE  ≥  8 * MESSAGE_LENGTH
+            let bits_per_fe = F::ORDER_U64.ilog2() as usize;
             assert!(
                 bits_per_fe * MSG_LEN_FE >= 8 * MESSAGE_LENGTH,
-                "Poseidon Message Hash: Parameter mismatch: not enough field elements to encode the message"
+                "Poseidon Message Hash: not enough field elements to encode the message"
             );
 
-            // Check that we have enough bits to encode tweak
-            // Epoch is a u32, and we have one domain separator byte
+            // The epoch tweak (Eq. 19, DKKW25) packs a u32 epoch and an
+            // 8-bit domain separator into one value, requiring 40 bits total:
+            //
+            //   tweakm(ep) = (0x02 || ep)     ← 8 + 32 = 40 bits
+            //                 sep    epoch
+            //
+            // The field element representation needs enough capacity:
+            //   ⌊log2(p)⌋ * TWEAK_LEN_FE  ≥  40
             assert!(
                 bits_per_fe * TWEAK_LEN_FE >= 40,
-                "Poseidon Message Hash: Parameter mismatch: not enough field elements to encode the epoch tweak"
+                "Poseidon Message Hash: not enough field elements to encode the epoch tweak"
             );
 
-            // Check that decoding from field elements to chunks can be done
-            // injectively, i.e., we have enough chunks
-            // chunk_size = ceil(log2(BASE))
-            assert!(BASE > 1, "Poseidon Message Hash: BASE must be > 1");
+            // Injective decoding to chunks
+            //
+            // The hash output (η' field elements) is decoded via Decode_{p,η',w}
+            // (§7.3.1, DKKW25): interpret the η' elements as one big integer
+            // and express it in base w to get DIMENSION chunks.
+            //
+            // For injectivity, the big integer must have enough room:
+            //   p^η'  ≤  w^DIMENSION
+            //   ⟹  ⌊log2(p)⌋ * HASH_LEN_FE  ≤  DIMENSION * ⌈log2(w)⌉
             let chunk_size = (usize::BITS - (BASE - 1).leading_zeros()) as usize;
             assert!(
                 bits_per_fe * HASH_LEN_FE <= DIMENSION * chunk_size,
-                "Poseidon Message Hash: Parameter mismatch: not enough bits to decode the hash"
+                "Poseidon Message Hash: not enough chunks to decode the hash output"
             );
         }
 
