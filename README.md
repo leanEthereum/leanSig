@@ -111,6 +111,10 @@ Confidence intervals can also be shown via
 python3 benchmark-mean.py target --intervals
 ```
 
+## Deviations from the [original paper](https://eprint.iacr.org/2025/055.pdf)
+
+- use of 'overwrite' sponge, instead of 'addition' / 'xor' sponge.
+
 ## License
 
 Apache Version 2.0.
