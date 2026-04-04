@@ -653,6 +653,7 @@ where
 
     const LIFETIME: u64 = 1 << LOG_LIFETIME;
 
+    #[allow(clippy::too_many_lines)]
     fn key_gen<R: RngExt>(
         rng: &mut R,
         activation_epoch: usize,
