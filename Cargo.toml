@@ -55,7 +55,6 @@ bincode = { version = "2.0.1", features = ["serde"] }
 slow-tests = []
 with-gen-benches-sha = []
 with-gen-benches-poseidon = []
-with-gen-benches-poseidon-top-level = []
 
 [[bench]]
 name = "benchmark"
