@@ -77,50 +77,108 @@ where
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
     ) -> Result<Vec<u8>, HypercubeHashError> {
+        // Compile-time parameter validation for AbortingHypercubeMessageHash
+        //
+        // This hash implements H^hc_{w,v,z,Q} from §6.1 of HHKTW26. It uses
+        // rejection sampling to uniformly map Poseidon field elements into
+        // the hypercube Z_w^v, avoiding big-integer arithmetic entirely:
+        //
+        //   1. Compute (A_1, ..., A_ℓ) := Poseidon(R || P || T || M)
+        //   2. For each A_i: reject if A_i ≥ Q·w^z  (ensures uniformity)
+        //   3. Decompose d_i = ⌊A_i / Q⌋ into z base-w digits
+        //   4. Collect the first v digits as the output
+        //
+        // The field prime decomposes as  p = Q·w^z + α  (α ≥ 0).
+        // Rejection happens with per-element probability α/p, and the
+        // overall abort probability is θ = 1 - ((Q·w^z)/p)^ℓ  (Lemma 8).
+        //
+        // By Theorem 4 of HHKTW26, this construction is indifferentiable
+        // from a θ-aborting random oracle when Poseidon is modeled as a
+        // standard random oracle.
+        //
+        // DKKW25: https://eprint.iacr.org/2025/055
+        // HHKTW26: https://eprint.iacr.org/2026/016
         const {
-            // Check that Poseidon of width 24 is enough
+            // Poseidon capacity constraints
+            //
+            // We use Poseidon in compression mode with a width-24 permutation.
+            // All inputs must fit in one call, and the output is extracted
+            // from the same state.
             assert!(
                 PARAMETER_LEN + RAND_LEN_FE + TWEAK_LEN_FE + MSG_LEN_FE <= 24,
-                "Poseidon of width 24 is not enough"
+                "Poseidon of width 24 is not enough for the input"
             );
-            assert!(HASH_LEN_FE <= 24, "Poseidon of width 24 is not enough");
-
-            // Check that we have enough hash output field elements
             assert!(
-                HASH_LEN_FE >= DIMENSION.div_ceil(Z),
-                "Not enough hash output field elements for the requested dimension"
+                HASH_LEN_FE <= 24,
+                "Poseidon of width 24 is not enough for the output"
             );
+
+            // Poseidon compression mode can only produce as many output
+            // field elements as there are input elements.
             assert!(
                 PARAMETER_LEN + RAND_LEN_FE + TWEAK_LEN_FE + MSG_LEN_FE >= HASH_LEN_FE,
                 "Input shorter than requested output"
             );
 
-            // Base check
+            // Hypercube decomposition parameters
+            //
+            // Each good field element A_i < Q·w^z is decomposed into z
+            // base-w digits, so we need ℓ = ⌈v/z⌉ field elements to get
+            // at least v digits. HASH_LEN_FE must supply enough elements.
             assert!(
-                BASE <= 1 << 8,
-                "Aborting Hypercube Message Hash: Base must be at most 2^8"
+                DIMENSION >= 1,
+                "AbortingHypercubeMessageHash: DIMENSION (v) must be at least 1"
+            );
+            assert!(
+                Z >= 1,
+                "AbortingHypercubeMessageHash: Z (digits per field element) must be at least 1"
+            );
+            assert!(
+                HASH_LEN_FE >= DIMENSION.div_ceil(Z),
+                "Not enough hash output field elements: need ceil(v/z)"
             );
 
-            // Check that Q * w^z fits within the field
+            // Q is the quotient in the decomposition A_i = Q·d_i + c_i,
+            // where c_i ∈ {0, ..., Q-1} is discarded and d_i ∈ {0, ..., w^z-1}
+            // carries the uniform digits. Q must be positive for a valid range.
+            assert!(Q >= 1, "AbortingHypercubeMessageHash: Q must be at least 1");
+
+            // The rejection threshold Q·w^z must not exceed the field order p,
+            // since field elements A_i live in {0, ..., p-1}. The remainder
+            // α = p - Q·w^z determines the per-element abort probability α/p.
+            //
+            // Example (KoalaBear): p = 2^31 - 2^24 + 1 = 127·8^8 + 1
+            //   ⟹  Q=127, w=8, z=8, α=1, abort prob ≈ 4.7e-10 per element.
             assert!(
                 Q as u64 * (BASE as u64).pow(Z as u32) <= F::ORDER_U64,
-                "Q * w^z exceeds field order"
+                "Q * w^z exceeds field order p"
             );
 
-            // floor(log2(ORDER))
-            let bits_per_fe = F::ORDER_U64.ilog2() as usize;
+            // Representation constraints
+            //
+            // Same as the Poseidon message hash: chunks and chain indices
+            // are stored as u8 in signatures and tweak encodings.
+            assert!(
+                BASE >= 2,
+                "AbortingHypercubeMessageHash: BASE (w) must be at least 2 (Definition 13, DKKW25)"
+            );
+            assert!(
+                BASE <= 1 << 8,
+                "AbortingHypercubeMessageHash: BASE (w) must fit in u8"
+            );
 
-            // Check that we have enough bits to encode message
+            // Injective encoding of inputs
+            //
+            // Same requirements as the standard Poseidon message hash:
+            // message and epoch must be losslessly encodable as field elements.
+            let bits_per_fe = F::ORDER_U64.ilog2() as usize;
             assert!(
                 bits_per_fe * MSG_LEN_FE >= 8 * MESSAGE_LENGTH,
-                "Aborting Hypercube Message Hash: not enough field elements to encode the message"
+                "AbortingHypercubeMessageHash: not enough field elements to encode the message"
             );
-
-            // Check that we have enough bits to encode tweak
-            // Epoch is a u32, and we have one domain separator byte
             assert!(
                 bits_per_fe * TWEAK_LEN_FE >= 40,
-                "Aborting Hypercube Message Hash: not enough field elements to encode the epoch tweak"
+                "AbortingHypercubeMessageHash: not enough field elements to encode the epoch tweak"
             );
         }
 

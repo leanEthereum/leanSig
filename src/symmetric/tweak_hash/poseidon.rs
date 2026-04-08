@@ -300,29 +300,54 @@ impl<
         tweak: &Self::Tweak,
         message: &[Self::Domain],
     ) -> Self::Domain {
+        // Compile-time parameter validation for PoseidonTweakHash
+        //
+        // DKKW25: https://eprint.iacr.org/2025/055
         const {
+            // The hash output space H = F_p^η and public parameter space
+            // P = F_p^l_p must both be non-empty.
+            assert!(
+                HASH_LEN >= 1,
+                "Poseidon Tweak Hash: HASH_LEN (η) must be at least 1"
+            );
+            assert!(
+                PARAMETER_LEN >= 1,
+                "Poseidon Tweak Hash: PARAMETER_LEN (l_p) must be at least 1"
+            );
+
+            // Leaf hashing uses a sponge construction with rate = 24 - CAPACITY.
+            // The capacity must leave room for at least one rate element.
             assert!(
                 CAPACITY < 24,
-                "Poseidon Tweak Chain Hash: Capacity must be less than 24"
+                "Poseidon Tweak Hash: Capacity must be less than 24"
             );
+
+            // Chain hashing: Th(P, T, M) for M ∈ H uses compression mode
+            // with width 16. Input = [P || T || M].
             assert!(
                 PARAMETER_LEN + TWEAK_LEN + HASH_LEN <= 16,
                 "Poseidon Tweak Chain Hash: Input lengths too large for Poseidon instance"
             );
+
+            // Tree hashing: Th(P, T, M) for M ∈ H² uses compression mode
+            // with width 24. Input = [P || T || left || right].
             assert!(
                 PARAMETER_LEN + TWEAK_LEN + 2 * HASH_LEN <= 24,
                 "Poseidon Tweak Tree Hash: Input lengths too large for Poseidon instance"
             );
 
-            // floor(log2(ORDER))
+            // Leaf hashing: the sponge capacity value V_c is derived from
+            // 4 domain parameters (each 32 bits = 128 bits total) via a
+            // width-24 Poseidon compression.
             let bits_per_fe = F::ORDER_U64.ilog2() as usize;
             assert!(
                 bits_per_fe * 24 >= DOMAIN_PARAMETERS_LENGTH * 32,
                 "Poseidon Tweak Leaf Hash: not enough field elements to hash the domain separator"
             );
 
-            // tree tweak: 32 (pos_in_level) + 8 (level) = 40 bits
-            // chain tweak: 32 (epoch) + 8 (chain_index) + 8 (pos_in_chain) + 8 (separator) = 56 bits
+            // Tweak encoding: the tree tweak packs 32 (pos_in_level) + 8
+            // (level) = 40 bits; the chain tweak packs 32 (epoch) + 8
+            // (chain_index) + 8 (pos_in_chain) + 8 (separator) = 56 bits.
             let tweak_fe_bits = bits_per_fe * TWEAK_LEN;
             assert!(
                 tweak_fe_bits >= 40,
