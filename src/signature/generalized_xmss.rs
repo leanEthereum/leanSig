@@ -659,26 +659,6 @@ where
         activation_epoch: usize,
         num_active_epochs: usize,
     ) -> (Self::PublicKey, Self::SecretKey) {
-        // Compile-time parameter validation for Generalized XMSS
-        //
-        // This implements Construction 3 (Generalized XMSS) from DKKW25.
-        // The scheme structure is:
-        //
-        //   Public key:  pk = (root, P)  where root is a Merkle root over
-        //                L = 2^h one-time public keys.
-        //
-        //   Signature:   σ = (ρ, σ_OTS, path_ep)
-        //     - ρ:        randomness for the incomparable encoding
-        //     - σ_OTS:    v chain hashes  (one per chain)
-        //     - path_ep:  Merkle authentication path of length h
-        //
-        // Key generation builds the Merkle tree using the "top-bottom"
-        // approach: the full tree of depth h is split at h/2 into one
-        // top tree and sqrt(L) bottom trees, enabling a sliding window of
-        // two bottom trees in the secret key.
-        //
-        // DKKW25: "Hash-Based Multi-Signatures for Post-Quantum Ethereum"
-        //          (DKKW25, IACR CiC 2(1), 2025)
         const {
             // Encoding well-formedness
             //
@@ -699,7 +679,7 @@ where
 
             // Representation constraints
             //
-            // The chain tweak function (Eq. 17, DKKW25) encodes:
+            // The chain tweak function (DKKW25) encodes:
             //
             //   tweak(ep, i, k) = (0x00 || ep    || i     || k)
             //                      8 bits  ceil(log L)  ceil(log v)  w bits

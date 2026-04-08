@@ -72,15 +72,14 @@ impl<MH: MessageHash, const TARGET_SUM: usize> IncomparableEncoding
         // no two distinct codewords x, x' satisfy x_i ≥ x'_i for all i.
         // This is critical for the security of the XMSS signature scheme.
         //
-        // DKKW25: "Hash-Based Multi-Signatures for Post-Quantum Ethereum"
-        //          (DKKW25, IACR CiC 2(1), 2025)
-        // HHKTW26: "Aborting Random Oracles" (ePrint 2026/016)
+        // DKKW25: https://eprint.iacr.org/2025/055
+        // HHKTW26: https://eprint.iacr.org/2026/016
         const {
             // Representation constraints
             //
-            // In the Generalized XMSS construction (Construction 3, DKKW25),
+            // In the Generalized XMSS construction (DKKW25),
             // each chain position and chain index is encoded as a single byte
-            // in the tweak function (Eq. 17):
+            // in the tweak function:
             //
             //   tweak(ep, i, k) = (0x00 || ep || i || k)
             //                      8b     ⌈log L⌉  ⌈log v⌉  w bits

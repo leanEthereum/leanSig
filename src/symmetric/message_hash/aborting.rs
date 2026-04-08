@@ -96,9 +96,8 @@ where
         // from a θ-aborting random oracle when Poseidon is modeled as a
         // standard random oracle.
         //
-        // DKKW25: "Hash-Based Multi-Signatures for Post-Quantum Ethereum"
-        //          (DKKW25, IACR CiC 2(1), 2025)
-        // HHKTW26: "Aborting Random Oracles" (ePrint 2026/016)
+        // DKKW25: https://eprint.iacr.org/2025/055
+        // HHKTW26: https://eprint.iacr.org/2026/016
         const {
             // Poseidon capacity constraints
             //
@@ -128,11 +127,11 @@ where
             // at least v digits. HASH_LEN_FE must supply enough elements.
             assert!(
                 DIMENSION >= 1,
-                "Aborting Hypercube: DIMENSION (v) must be at least 1"
+                "AbortingHypercubeMessageHash: DIMENSION (v) must be at least 1"
             );
             assert!(
                 Z >= 1,
-                "Aborting Hypercube: Z (digits per field element) must be at least 1"
+                "AbortingHypercubeMessageHash: Z (digits per field element) must be at least 1"
             );
             assert!(
                 HASH_LEN_FE >= DIMENSION.div_ceil(Z),
@@ -142,7 +141,7 @@ where
             // Q is the quotient in the decomposition A_i = Q·d_i + c_i,
             // where c_i ∈ {0, ..., Q-1} is discarded and d_i ∈ {0, ..., w^z-1}
             // carries the uniform digits. Q must be positive for a valid range.
-            assert!(Q >= 1, "Aborting Hypercube: Q must be at least 1");
+            assert!(Q >= 1, "AbortingHypercubeMessageHash: Q must be at least 1");
 
             // The rejection threshold Q·w^z must not exceed the field order p,
             // since field elements A_i live in {0, ..., p-1}. The remainder
@@ -161,11 +160,11 @@ where
             // are stored as u8 in signatures and tweak encodings.
             assert!(
                 BASE >= 2,
-                "Aborting Hypercube: BASE (w) must be at least 2 (Definition 13, DKKW25)"
+                "AbortingHypercubeMessageHash: BASE (w) must be at least 2 (Definition 13, DKKW25)"
             );
             assert!(
                 BASE <= 1 << 8,
-                "Aborting Hypercube: BASE (w) must fit in u8"
+                "AbortingHypercubeMessageHash: BASE (w) must fit in u8"
             );
 
             // Injective encoding of inputs
@@ -175,11 +174,11 @@ where
             let bits_per_fe = F::ORDER_U64.ilog2() as usize;
             assert!(
                 bits_per_fe * MSG_LEN_FE >= 8 * MESSAGE_LENGTH,
-                "Aborting Hypercube: not enough field elements to encode the message"
+                "AbortingHypercubeMessageHash: not enough field elements to encode the message"
             );
             assert!(
                 bits_per_fe * TWEAK_LEN_FE >= 40,
-                "Aborting Hypercube: not enough field elements to encode the epoch tweak"
+                "AbortingHypercubeMessageHash: not enough field elements to encode the epoch tweak"
             );
         }
 

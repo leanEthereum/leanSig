@@ -188,7 +188,7 @@ where
     ) -> Result<Vec<u8>, Infallible> {
         // Compile-time parameter validation for Poseidon Message Hash
         //
-        // This hash implements Th_msg from §7.3.1 of DKKW25. It takes:
+        // This hash implements Th_msg from DKKW25. It takes:
         //
         //   Th_msg(P, T, M, R) = Decode_{p,η',w}(
         //       PoseidonCompress_{p, t_msg, η'}(R || P || EncT(T) || EncM(M))
@@ -198,8 +198,7 @@ where
         // This is used inside the incomparable encoding to map (message, seed)
         // to a hypercube vertex x ∈ Z_w^v before the target sum filter.
         //
-        // DKKW25: "Hash-Based Multi-Signatures for Post-Quantum Ethereum"
-        //          (DKKW25, IACR CiC 2(1), 2025)
+        // DKKW25: https://eprint.iacr.org/2025/055
         const {
             // Poseidon capacity constraints
             //
@@ -225,8 +224,8 @@ where
 
             // Representation constraints
             //
-            // Construction 3 (DKKW25) stores chunk values and chain indices
-            // as u8 in the signature and tweak encodings (Eq. 17).
+            // The Generalized XMSS construction (DKKW25) stores chunk values
+            // and chain indices as u8 in the signature and tweak encodings.
             // BASE (= w) and DIMENSION (= v) must each fit in one byte.
             assert!(
                 BASE <= 1 << 8,
@@ -258,7 +257,7 @@ where
                 "Poseidon Message Hash: not enough field elements to encode the message"
             );
 
-            // The epoch tweak (Eq. 19, DKKW25) packs a u32 epoch and an
+            // The epoch tweak (DKKW25) packs a u32 epoch and an
             // 8-bit domain separator into one value, requiring 40 bits total:
             //
             //   tweakm(ep) = (0x02 || ep)     ← 8 + 32 = 40 bits
@@ -274,7 +273,7 @@ where
             // Injective decoding to chunks
             //
             // The hash output (η' field elements) is decoded via Decode_{p,η',w}
-            // (§7.3.1, DKKW25): interpret the η' elements as one big integer
+            // (DKKW25): interpret the η' elements as one big integer
             // and express it in base w to get DIMENSION chunks.
             //
             // For injectivity, the big integer must have enough room:
