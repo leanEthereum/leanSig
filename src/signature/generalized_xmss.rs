@@ -1003,6 +1003,13 @@ where
             &sig.path,
         )
     }
+
+    fn get_public_key(sk: &Self::SecretKey) -> Self::PublicKey {
+        Self::PublicKey {
+            root: sk.top_tree.root(),
+            parameter: sk.parameter,
+        }
+    }
 }
 
 impl<TH: TweakableHash> Encode for GeneralizedXMSSPublicKey<TH> {
