@@ -826,10 +826,8 @@ where
             &parameter,
             roots_of_bottom_trees,
         );
-        let root = top_tree.root();
 
         // assemble public key and secret key
-        let pk = GeneralizedXMSSPublicKey { root, parameter };
         let sk = GeneralizedXMSSSecretKey {
             prf_key,
             parameter,
@@ -841,6 +839,7 @@ where
             right_bottom_tree,
             _encoding_type: PhantomData,
         };
+        let pk = Self::get_public_key(&sk);
 
         (pk, sk)
     }
@@ -1002,6 +1001,13 @@ where
             chain_ends.as_slice(),
             &sig.path,
         )
+    }
+
+    fn get_public_key(sk: &Self::SecretKey) -> Self::PublicKey {
+        Self::PublicKey {
+            root: sk.top_tree.root(),
+            parameter: sk.parameter,
+        }
     }
 }
 

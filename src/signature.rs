@@ -203,6 +203,15 @@ pub trait SignatureScheme {
         message: &[u8; MESSAGE_LENGTH],
         sig: &Self::Signature,
     ) -> bool;
+
+    /// Get public key corresponding to given secret key.
+    ///
+    /// ### Parameters
+    /// * `sk`: A reference to the secret key.
+    ///
+    /// ### Returns
+    /// Public key corresponding to given secret key.
+    fn get_public_key(sk: &Self::SecretKey) -> Self::PublicKey;
 }
 
 pub mod generalized_xmss;
