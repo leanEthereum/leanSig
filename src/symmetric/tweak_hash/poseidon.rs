@@ -356,6 +356,8 @@ impl<
         match message {
             [single] => {
                 // we compress message, parameter, tweak
+                // This does not respect the convention from [eprint 055](https://eprint.iacr.org/2025/055.pdf),
+                // but keeps the same security level.
                 let perm = poseidon1_16();
 
                 // Build input on stack: [message | parameter | tweak]
