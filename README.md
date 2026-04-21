@@ -113,7 +113,7 @@ python3 benchmark-mean.py target --intervals
 
 ## Deviations from the [original paper](https://eprint.iacr.org/2025/055.pdf)
 
-- use of 'overwrite' sponge, instead of 'addition' / 'xor' sponge.
+- use of 'overwrite' sponge, instead of 'addition' / 'xor' sponge, when hashing the WOTS pubkey. Motivation: zkVM friendliness (saving some cycles). Same security level.
 
 ## License
 
