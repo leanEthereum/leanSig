@@ -113,7 +113,11 @@ python3 benchmark-mean.py target --intervals
 
 ## Deviations from the [original paper](https://eprint.iacr.org/2025/055.pdf)
 
-- use of 'overwrite' sponge, instead of 'addition' / 'xor' sponge, when hashing the WOTS pubkey. Motivation: zkVM friendliness (saving some cycles). Same security level.
+- use of 'overwrite' sponge, instead of 'addition' / 'xor' sponge, when hashing the WOTS pubkey.
+- WOTS encoding: use [message, parameters, epoch, randomness] instead of [randomness, parameters, epoch, message].
+- Hash chains: use [current_value | parameter | tweak] instead of [parameter | tweak | current_value].
+
+Deviations are motivated by [leanVM](https://github.com/leanEthereum/leanMultisig) friendliness (XMSS aggregation requiring fewer cycles). They do not impact the security level.
 
 ## License
 
