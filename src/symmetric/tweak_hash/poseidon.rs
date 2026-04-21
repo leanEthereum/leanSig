@@ -315,7 +315,7 @@ impl<
         const {
             assert!(
                 CAPACITY < 24,
-                "Poseidon Tweak Hash: Capacity must be less than 24"
+                "Poseidon Tweak Chain Hash: Capacity must be less than 24"
             );
             assert!(
                 PARAMETER_LEN + TWEAK_LEN + HASH_LEN <= 16,
@@ -355,18 +355,19 @@ impl<
 
         match message {
             [single] => {
-                // we compress parameter, tweak, message
+                // we compress message, parameter, tweak
+                // This does not respect the convention from [eprint 055](https://eprint.iacr.org/2025/055.pdf),
+                // but keeps the same security level.
                 let perm = poseidon1_16();
 
-                // Build input on stack: [parameter | tweak | message]
+                // Build input on stack: [message | parameter | tweak]
                 let mut combined_input = [F::ZERO; CHAIN_COMPRESSION_WIDTH];
-                combined_input[..PARAMETER_LEN].copy_from_slice(&parameter.0);
-                combined_input[PARAMETER_LEN..PARAMETER_LEN + TWEAK_LEN].copy_from_slice(&tweak_fe);
-                combined_input[PARAMETER_LEN + TWEAK_LEN..PARAMETER_LEN + TWEAK_LEN + HASH_LEN]
-                    .copy_from_slice(&single.0);
+                combined_input[..HASH_LEN].copy_from_slice(&single.0);
+                combined_input[HASH_LEN..][..PARAMETER_LEN].copy_from_slice(&parameter.0);
+                combined_input[HASH_LEN + PARAMETER_LEN..][..TWEAK_LEN].copy_from_slice(&tweak_fe);
 
                 FieldArray(
-                    poseidon_compress::<F, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
+                    poseidon_compress::<_, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
                         &perm,
                         &combined_input,
                     ),
@@ -606,9 +607,10 @@ impl<
                 // Cache strategy: process one chain at a time to maximize locality.
                 // All epochs for that chain stay in registers across iterations.
 
-                // Offsets for chain compression: [parameter | tweak | current_value]
-                let chain_tweak_offset = PARAMETER_LEN;
-                let chain_value_offset = PARAMETER_LEN + TWEAK_LEN;
+                // Offsets for chain compression: [current_value | parameter | tweak]
+                let chain_value_offset = 0;
+                let chain_parameter_offset = HASH_LEN;
+                let chain_tweak_offset = HASH_LEN + PARAMETER_LEN;
 
                 for (chain_index, packed_chain) in
                     packed_chains.iter_mut().enumerate().take(num_chains)
@@ -620,11 +622,17 @@ impl<
                         let pos = (step + 1) as u8;
 
                         // Assemble the packed input for the hash function.
-                        // Layout: [parameter | tweak | current_value]
+                        // Layout: [current_value | parameter | tweak]
                         let mut packed_input = [PackedF::ZERO; CHAIN_COMPRESSION_WIDTH];
 
+                        // Copy current chain value (already packed)
+                        packed_input[chain_value_offset..chain_value_offset + HASH_LEN]
+                            .copy_from_slice(packed_chain);
+
                         // Copy pre-packed parameter
-                        packed_input[..PARAMETER_LEN].copy_from_slice(&packed_parameter);
+                        packed_input
+                            [chain_parameter_offset..chain_parameter_offset + PARAMETER_LEN]
+                            .copy_from_slice(&packed_parameter);
 
                         // Pack tweaks directly into destination
                         pack_fn_into::<TWEAK_LEN>(
@@ -635,10 +643,6 @@ impl<
                                     .to_field_elements::<TWEAK_LEN>()[t_idx]
                             },
                         );
-
-                        // Copy current chain value (already packed)
-                        packed_input[chain_value_offset..chain_value_offset + HASH_LEN]
-                            .copy_from_slice(packed_chain);
 
                         // Apply the hash function to advance the chain.
                         // This single call processes all epochs in parallel.
