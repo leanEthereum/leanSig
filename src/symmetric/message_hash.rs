@@ -5,8 +5,6 @@ use rand::RngExt;
 use crate::MESSAGE_LENGTH;
 use crate::serialization::Serializable;
 
-pub use poseidon::encode_message;
-
 /// Trait to model a hash function used for message hashing.
 ///
 /// This is a variant of a tweakable hash function that we use for
