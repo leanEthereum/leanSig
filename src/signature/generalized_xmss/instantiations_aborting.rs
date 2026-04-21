@@ -65,15 +65,15 @@ pub mod lifetime_2_to_the_32 {
         #[test]
         #[cfg(feature = "slow-tests")]
         pub fn test_correctness() {
-            test_signature_scheme_correctness::<SchemeAbortingTargetSumLifetime32Dim46Base8>(
+            test_signature_scheme_correctness::<SIGAbortingTargetSumLifetime32Dim46Base8>(
                 213,
                 0,
-                SchemeAbortingTargetSumLifetime32Dim46Base8::LIFETIME as usize,
+                SIGAbortingTargetSumLifetime32Dim46Base8::LIFETIME as usize,
             );
-            test_signature_scheme_correctness::<SchemeAbortingTargetSumLifetime32Dim46Base8>(
+            test_signature_scheme_correctness::<SIGAbortingTargetSumLifetime32Dim46Base8>(
                 4,
                 0,
-                SchemeAbortingTargetSumLifetime32Dim46Base8::LIFETIME as usize,
+                SIGAbortingTargetSumLifetime32Dim46Base8::LIFETIME as usize,
             );
         }
     }
