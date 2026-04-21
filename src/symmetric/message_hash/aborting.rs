@@ -14,6 +14,7 @@ use crate::array::FieldArray;
 /// Given p = Q * w^z + alpha, each Poseidon output field element A_i is:
 /// 1) checked to be less than Q * w^z, and if not the hash aborts
 /// 2) decomposed as d_i = floor(A_i / Q), then d_i is written in base w with z digits.
+#[derive(Debug, Clone, Copy)]
 pub struct AbortingHypercubeMessageHash<
     const PARAMETER_LEN: usize,
     const RAND_LEN_FE: usize,

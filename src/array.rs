@@ -8,7 +8,7 @@ use crate::serialization::Serializable;
 use p3_field::{PrimeCharacteristicRing, PrimeField32, RawDataSerializable};
 
 /// A wrapper around an array of field elements that implements SSZ Encode/Decode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct FieldArray<const N: usize>(pub [F; N]);
 

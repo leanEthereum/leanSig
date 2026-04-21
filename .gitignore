@@ -1,6 +1,5 @@
 /target
 
-Cargo.lock
 /.debug
 
 # Proptest data
