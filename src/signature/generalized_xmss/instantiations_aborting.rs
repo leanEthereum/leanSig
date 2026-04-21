@@ -81,7 +81,7 @@ pub mod lifetime_2_to_the_32 {
 
 /// Instantiations with Lifetime 2^8. This is for testing purposes only.
 ///
-/// Warning: Should not be used in production environments.
+/// Warning: Must not be used in production environments.
 pub mod lifetime_2_to_the_8 {
     use crate::{
         inc_encoding::target_sum::TargetSumEncoding,
