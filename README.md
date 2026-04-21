@@ -114,6 +114,7 @@ python3 benchmark-mean.py target --intervals
 ## Deviations from the [original paper](https://eprint.iacr.org/2025/055.pdf)
 
 - use of 'overwrite' sponge, instead of 'addition' / 'xor' sponge, when hashing the WOTS pubkey.
+- sponge data layout: [capacity | rate] instead of [rate | capacity].
 - WOTS encoding: use [message, parameters, epoch, randomness] instead of [randomness, parameters, epoch, message].
 - Hash chains: use [current_value | parameter | tweak] instead of [parameter | tweak | current_value].
 
