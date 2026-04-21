@@ -188,6 +188,9 @@ fn poseidon_safe_domain_separator<const OUT_LEN: usize>(
 /// ### "Replacement"
 /// This means we "replace" the rate elements of the state with the input chunk, instead
 /// of adding (in the sense of finite field addition).
+/// Using a replacement-sponge is not consistent with [eprint 055](https://eprint.iacr.org/2025/055.pdf), 
+/// but keep the same security level. Motivations of this change: zkVM friendliness (saving
+/// roughly 1 cycle per element that we `replace` instead of `adding` it).
 ///
 /// ### Panics
 /// - If `capacity_value.len() >= WIDTH`
