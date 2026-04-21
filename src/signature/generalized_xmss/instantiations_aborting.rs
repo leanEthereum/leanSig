@@ -44,7 +44,7 @@ pub mod lifetime_2_to_the_32 {
     type PRF = ShakePRFtoF<HASH_LEN_FE, RAND_LEN_FE>;
     type IE = TargetSumEncoding<MH, TARGET_SUM>;
 
-    pub type SchemeAbortingTargetSumLifetime32Dim46Base8 =
+    pub type SIGAbortingTargetSumLifetime32Dim46Base8 =
         GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
     pub type PubKeyAbortingTargetSumLifetime32Dim46Base8 = GeneralizedXMSSPublicKey<TH>;
     pub type SecretKeyAbortingTargetSumLifetime32Dim46Base8 =
@@ -55,7 +55,7 @@ pub mod lifetime_2_to_the_32 {
     mod test {
 
         #[cfg(feature = "slow-tests")]
-        use super::SchemeAbortingTargetSumLifetime32Dim46Base8;
+        use super::SIGAbortingTargetSumLifetime32Dim46Base8;
         #[cfg(feature = "slow-tests")]
         use crate::signature::SignatureScheme;
 
