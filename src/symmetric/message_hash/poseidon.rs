@@ -1,9 +1,8 @@
+use core::array;
 use std::convert::Infallible;
 
 use num_bigint::BigUint;
-use p3_field::PrimeCharacteristicRing;
-use p3_field::PrimeField;
-use p3_field::PrimeField64;
+use p3_field::{PackedValue, PrimeCharacteristicRing, PrimeField, PrimeField64};
 use serde::{Serialize, de::DeserializeOwned};
 
 use super::MessageHash;
@@ -12,7 +11,10 @@ use crate::MESSAGE_LENGTH;
 use crate::TWEAK_SEPARATOR_FOR_MESSAGE_HASH;
 use crate::array::FieldArray;
 use crate::poseidon1_24;
+use crate::simd_utils::pack_array;
+use crate::symmetric::prf::Pseudorandom;
 use crate::symmetric::tweak_hash::poseidon::poseidon_compress;
+use crate::PackedF;
 
 /// Function to encode a message as an array of field elements
 pub fn encode_message<const MSG_LEN_FE: usize>(message: &[u8; MESSAGE_LENGTH]) -> [F; MSG_LEN_FE] {
@@ -240,6 +242,59 @@ where
         >(parameter, epoch, randomness, message);
 
         Ok(decode_to_chunks::<DIMENSION, BASE, HASH_LEN_FE>(&hash_fe).to_vec())
+    }
+
+    fn grind_target_sum<PRF, const TARGET_SUM: usize>(
+        parameter: &Self::Parameter,
+        prf_key: &PRF::Key,
+        epoch: u32,
+        message: &[u8; MESSAGE_LENGTH],
+        max_tries: usize,
+    ) -> Option<(Self::Randomness, Vec<u8>)>
+    where
+        PRF: Pseudorandom,
+        PRF::Randomness: Into<Self::Randomness>,
+    {
+        let perm = poseidon1_24();
+        let lanes = PackedF::WIDTH;
+
+        let packed_message: [PackedF; MSG_LEN_FE] =
+            encode_message::<MSG_LEN_FE>(message).map(PackedF::from);
+        let packed_parameter: [PackedF; PARAMETER_LEN] = array::from_fn(|i| PackedF::from(parameter[i]));
+        let packed_epoch: [PackedF; TWEAK_LEN_FE] = encode_epoch::<TWEAK_LEN_FE>(epoch).map(PackedF::from);
+
+        for batch_start in (0..max_tries).step_by(lanes) {
+            let valid_lanes = (max_tries - batch_start).min(lanes);
+            let randomnesses: [FieldArray<RAND_LEN_FE>; PackedF::WIDTH] = array::from_fn(|lane| {
+                let attempt = batch_start + lane.min(valid_lanes.saturating_sub(1));
+                PRF::get_randomness(prf_key, epoch, message, attempt as u64).into()
+            });
+            let packed_randomness = pack_array(&randomnesses);
+
+            let combined_input_len = MSG_LEN_FE + PARAMETER_LEN + TWEAK_LEN_FE + RAND_LEN_FE;
+            let mut combined_input = Vec::with_capacity(combined_input_len);
+            combined_input.extend_from_slice(&packed_message);
+            combined_input.extend_from_slice(&packed_parameter);
+            combined_input.extend_from_slice(&packed_epoch);
+            combined_input.extend_from_slice(&packed_randomness);
+
+            let packed_hash =
+                poseidon_compress::<PackedF, _, 24, HASH_LEN_FE>(&perm, &combined_input);
+
+            let mut unpacked_hashes = [FieldArray([F::ZERO; HASH_LEN_FE]); PackedF::WIDTH];
+            PackedF::unpack_into(&packed_hash, FieldArray::as_raw_slice_mut(&mut unpacked_hashes));
+
+            for lane in 0..valid_lanes {
+                let chunks =
+                    decode_to_chunks::<DIMENSION, BASE, HASH_LEN_FE>(&unpacked_hashes[lane].0)
+                        .to_vec();
+                if chunks.iter().map(|&chunk| chunk as usize).sum::<usize>() == TARGET_SUM {
+                    return Some((randomnesses[lane], chunks));
+                }
+            }
+        }
+
+        None
     }
 }
 

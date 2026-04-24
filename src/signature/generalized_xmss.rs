@@ -814,39 +814,13 @@ where
         let path = combined_path(&sk.top_tree, bottom_tree, epoch);
 
         // now, we need to encode our message using the incomparable encoding.
-        // we retry until we get a valid codeword, or until we give up.
-        let max_tries = IE::MAX_TRIES;
-        let mut attempts = 0;
-        let mut x = None;
-        let mut rho = None;
-        while attempts < max_tries {
-            // get a randomness and try to encode the message. Note: we get the randomness from the PRF
-            // which ensures that signing is deterministic. The PRF is applied to the message and the epoch.
-            // While the intention is that users of the scheme never call sign twice with the same (epoch, sk) pair,
-            // this deterministic approach ensures that calling sign twice is fine, as long as the message stays the same.
-            let curr_rho = PRF::get_randomness(&sk.prf_key, epoch, message, attempts as u64).into();
-            let curr_x = IE::encode(&sk.parameter.into(), message, &curr_rho, epoch);
-
-            // check if we have found a valid codeword, and if so, stop searching
-            if curr_x.is_ok() {
-                rho = Some(curr_rho);
-                x = curr_x.ok();
-                break;
-            }
-
-            attempts += 1;
-        }
-
-        // if we have not found a valid codeword, return an error
-        if x.is_none() {
+        // this search stays deterministic: we always return the first successful PRF counter.
+        let Some((rho, x)) = IE::grind::<PRF>(&sk.parameter.into(), &sk.prf_key, epoch, message)
+        else {
             return Err(SigningError::EncodingAttemptsExceeded {
-                attempts: max_tries,
+                attempts: IE::MAX_TRIES,
             });
-        }
-
-        // otherwise, unwrap x and rho
-        let x = x.unwrap();
-        let rho = rho.unwrap();
+        };
 
         // we will include rho in the signature, and
         // we use x to determine how far the signer walks in the chains
