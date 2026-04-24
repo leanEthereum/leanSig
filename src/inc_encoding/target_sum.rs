@@ -2,6 +2,7 @@ use super::IncomparableEncoding;
 use crate::{MESSAGE_LENGTH, symmetric::message_hash::MessageHash};
 use std::fmt::Debug;
 use thiserror::Error;
+use crate::symmetric::prf::Pseudorandom;
 
 /// Specific errors that can occur during target sum encoding.
 #[derive(Debug, Error)]
@@ -61,7 +62,32 @@ impl<MH: MessageHash, const TARGET_SUM: usize> IncomparableEncoding
         randomness: &Self::Randomness,
         epoch: u32,
     ) -> Result<Vec<u8>, Self::Error> {
+        // Compile-time parameter validation for Target Sum Encoding
+        //
+        // This encoding implements Construction 6 (IE for Target Sum Winternitz)
+        // from DKKW25. It maps a message to a codeword x ∈ C ⊆ Z_w^v, where:
+        //
+        //   C = { (x_1, ..., x_v) ∈ {0, ..., w-1}^v  |  Σ x_i = T }
+        //
+        // The code C enforces the *incomparability* property (Definition 13):
+        // no two distinct codewords x, x' satisfy x_i ≥ x'_i for all i.
+        // This is critical for the security of the XMSS signature scheme.
+        //
+        // DKKW25: https://eprint.iacr.org/2025/055
+        // HHKTW26: https://eprint.iacr.org/2026/016
         const {
+            // Representation constraints
+            //
+            // In the Generalized XMSS construction (DKKW25),
+            // each chain position and chain index is encoded as a single byte
+            // in the tweak function:
+            //
+            //   tweak(ep, i, k) = (0x00 || ep || i || k)
+            //                      8b     ⌈log L⌉  ⌈log v⌉  w bits
+            //
+            // - Since chain_index `i` is stored as u8, we need v ≤ 256.
+            // - Since pos_in_chain `k` is stored as u8, we need w ≤ 256.
+            // - Codeword entries (chunks) are also stored as u8 in signatures.
             // base and dimension must not be too large
             assert!(
                 MH::BASE <= 1 << 8,
@@ -71,6 +97,36 @@ impl<MH: MessageHash, const TARGET_SUM: usize> IncomparableEncoding
                 MH::DIMENSION <= 1 << 8,
                 "Target Sum Encoding: Dimension must be at most 2^8"
             );
+
+            // Encoding well-formedness
+            //
+            // Definition 13 (DKKW25): an incomparable encoding maps messages
+            // to codewords in {0, ..., w-1}^v. For the incomparability
+            // property to be meaningful, we need w ≥ 2 (otherwise every
+            // codeword is the zero vector, and distinct codewords cannot
+            // exist).
+            // assert!(
+            //     MH::BASE >= 2,
+            //     "Target Sum Encoding: Base must be at least 2"
+            // );
+
+            // Target sum range
+            //
+            // Construction 6 (DKKW25) defines the code:
+            //
+            //   C = { x ∈ {0,...,w-1}^v | Σ x_i = T }
+            //
+            // For C to be non-empty, T must be achievable: each x_i can
+            // contribute at most w-1 to the sum, so T ≤ v*(w-1). The lower
+            // bound T ≥ 0 is guaranteed by the usize type.
+            //
+            // Choosing T close to v*(w-1)/2 (the expected sum of a uniform
+            // hash) maximizes |C| and minimizes the signing retry rate
+            // (Lemma 7, DKKW25).
+            // assert!(
+            //     TARGET_SUM <= MH::DIMENSION * (MH::BASE - 1),
+            //     "Target Sum Encoding: TARGET_SUM must be at most DIMENSION * (BASE - 1)"
+            // );
         }
 
         // apply the message hash first to get chunks
@@ -87,6 +143,19 @@ impl<MH: MessageHash, const TARGET_SUM: usize> IncomparableEncoding
             })
         }
     }
+
+    fn grind<PRF>(
+        parameter: &Self::Parameter,
+        prf_key: &PRF::Key,
+        epoch: u32,
+        message: &[u8; MESSAGE_LENGTH],
+    ) -> Option<(Self::Randomness, Vec<u8>)>
+    where
+        PRF: Pseudorandom,
+        PRF::Randomness: Into<Self::Randomness>,
+    {
+        MH::grind_target_sum::<PRF, TARGET_SUM>(parameter, prf_key, epoch, message, Self::MAX_TRIES)
+    }
 }
 
 #[cfg(test)]
@@ -95,12 +164,14 @@ mod tests {
     use crate::F;
     use crate::array::FieldArray;
     use crate::symmetric::message_hash::poseidon::PoseidonMessageHash445;
+    use crate::symmetric::prf::{Pseudorandom, shake_to_field::ShakePRFtoF};
     use p3_field::PrimeField32;
     use proptest::prelude::*;
     use rand::RngExt;
 
     const TEST_TARGET_SUM: usize = 115;
     type TestTargetSumEncoding = TargetSumEncoding<PoseidonMessageHash445, TEST_TARGET_SUM>;
+    type TestPRF = ShakePRFtoF<4, 4>;
 
     #[test]
     fn test_successful_encoding_fixed_message() {
@@ -178,6 +249,32 @@ mod tests {
         }
 
         panic!("failed to find successful encoding after 1000 attempts");
+    }
+
+    #[test]
+    fn test_grind_matches_first_successful_attempt() {
+        let mut rng = rand::rng();
+        let parameter: FieldArray<4> = FieldArray(rng.random());
+        let message: [u8; 32] = rng.random();
+        let epoch = 7u32;
+        let prf_key = TestPRF::key_gen(&mut rng);
+
+        let expected = (0..TestTargetSumEncoding::MAX_TRIES).find_map(|attempt| {
+            let randomness = TestPRF::get_randomness(&prf_key, epoch, &message, attempt as u64);
+            TestTargetSumEncoding::encode(&parameter, &message, &randomness.into(), epoch)
+                .ok()
+                .map(|chunks| (randomness.into(), chunks))
+        });
+
+        let actual =
+            <TestTargetSumEncoding as IncomparableEncoding>::grind::<TestPRF>(
+                &parameter,
+                &prf_key,
+                epoch,
+                &message,
+            );
+
+        assert_eq!(actual, expected);
     }
 
     proptest! {

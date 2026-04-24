@@ -4,6 +4,7 @@ use rand::RngExt;
 
 use crate::MESSAGE_LENGTH;
 use crate::serialization::Serializable;
+use crate::symmetric::prf::Pseudorandom;
 
 /// Trait to model a hash function used for message hashing.
 ///
@@ -37,6 +38,34 @@ pub trait MessageHash {
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
     ) -> Result<Vec<u8>, Self::Error>;
+
+    /// Search deterministically for the first randomness whose chunks hit `TARGET_SUM`.
+    ///
+    /// Implementations may override this with a batched or SIMD-accelerated search.
+    fn grind_target_sum<PRF, const TARGET_SUM: usize>(
+        parameter: &Self::Parameter,
+        prf_key: &PRF::Key,
+        epoch: u32,
+        message: &[u8; MESSAGE_LENGTH],
+        max_tries: usize,
+    ) -> Option<(Self::Randomness, Vec<u8>)>
+    where
+        PRF: Pseudorandom,
+        PRF::Randomness: Into<Self::Randomness>,
+    {
+        for attempt in 0..max_tries {
+            let randomness = PRF::get_randomness(prf_key, epoch, message, attempt as u64).into();
+            let Ok(chunks) = Self::apply(parameter, epoch, &randomness, message) else {
+                continue;
+            };
+
+            if chunks.iter().map(|&chunk| chunk as usize).sum::<usize>() == TARGET_SUM {
+                return Some((randomness, chunks));
+            }
+        }
+
+        None
+    }
 }
 
 pub mod aborting;

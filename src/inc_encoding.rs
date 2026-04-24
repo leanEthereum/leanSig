@@ -3,6 +3,7 @@ use std::fmt::Debug;
 
 use crate::MESSAGE_LENGTH;
 use crate::serialization::Serializable;
+use crate::symmetric::prf::Pseudorandom;
 
 /// Trait to model incomparable encoding schemes.
 /// These schemes allow to encode a message into a codeword.
@@ -45,6 +46,29 @@ pub trait IncomparableEncoding {
         randomness: &Self::Randomness,
         epoch: u32,
     ) -> Result<Vec<u8>, Self::Error>;
+
+    /// Deterministically search for the first randomness that yields a valid codeword.
+    ///
+    /// Implementations may override this with a batched or SIMD-accelerated search.
+    fn grind<PRF>(
+        parameter: &Self::Parameter,
+        prf_key: &PRF::Key,
+        epoch: u32,
+        message: &[u8; MESSAGE_LENGTH],
+    ) -> Option<(Self::Randomness, Vec<u8>)>
+    where
+        PRF: Pseudorandom,
+        PRF::Randomness: Into<Self::Randomness>,
+    {
+        for attempt in 0..Self::MAX_TRIES {
+            let randomness = PRF::get_randomness(prf_key, epoch, message, attempt as u64).into();
+            if let Ok(codeword) = Self::encode(parameter, message, &randomness, epoch) {
+                return Some((randomness, codeword));
+            }
+        }
+
+        None
+    }
 }
 
 pub mod target_sum;
