@@ -1,0 +1,20 @@
+[package]
+name = "leansig-wasm"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.87"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+leansig = { path = "../..", default-features = false }
+rand = "0.10"
+wasm-bindgen = "0.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.4.2", features = ["wasm_js"] }
+
+[features]
+default = []
+production-lifetime-18-w2 = []

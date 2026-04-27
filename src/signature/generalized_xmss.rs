@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
 
 use rand::RngExt;
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     MESSAGE_LENGTH,
     inc_encoding::IncomparableEncoding,
+    parallel::map_range,
     serialization::Serializable,
     signature::SignatureSchemeSecretKey,
     symmetric::{
@@ -803,19 +803,17 @@ where
         roots_of_bottom_trees.push(right_bottom_tree.root());
 
         // the rest of the bottom trees in parallel
-        roots_of_bottom_trees.extend(
-            (start_bottom_tree_index + 2..end_bottom_tree_index)
-                .into_par_iter()
-                .map(|bottom_tree_index| {
-                    let bottom_tree = bottom_tree_from_prf_key::<PRF, IE, TH, LOG_LIFETIME>(
-                        &prf_key,
-                        bottom_tree_index as u64,
-                        &parameter,
-                    );
-                    bottom_tree.root()
-                })
-                .collect::<Vec<_>>(), // note: roots are in the correct order.
-        );
+        roots_of_bottom_trees.extend(map_range(
+            start_bottom_tree_index + 2..end_bottom_tree_index,
+            |bottom_tree_index| {
+                let bottom_tree = bottom_tree_from_prf_key::<PRF, IE, TH, LOG_LIFETIME>(
+                    &prf_key,
+                    bottom_tree_index as u64,
+                    &parameter,
+                );
+                bottom_tree.root()
+            },
+        )); // note: roots are in the correct order.
 
         // second, we build the top tree, which has the roots of our bottom trees
         // as leafs. the root of it will be our public key.
@@ -919,16 +917,13 @@ where
         );
 
         // In parallel, compute the hash values for each chain based on the codeword `x`.
-        let hashes = (0..num_chains)
-            .into_par_iter()
-            .map(|chain_index| {
-                // get back to the start of the chain from the PRF
-                let start = PRF::get_domain_element(&sk.prf_key, epoch, chain_index as u64).into();
-                // now walk the chain for a number of steps determined by the current chunk of x
-                let steps = x[chain_index] as usize;
-                chain::<TH>(&sk.parameter, epoch, chain_index as u8, 0, steps, &start)
-            })
-            .collect();
+        let hashes = map_range(0..num_chains, |chain_index| {
+            // get back to the start of the chain from the PRF
+            let start = PRF::get_domain_element(&sk.prf_key, epoch, chain_index as u64).into();
+            // now walk the chain for a number of steps determined by the current chunk of x
+            let steps = x[chain_index] as usize;
+            chain::<TH>(&sk.parameter, epoch, chain_index as u8, 0, steps, &start)
+        });
 
         // assemble the signature: Merkle path, randomness, chain elements
         Ok(GeneralizedXMSSSignature { path, rho, hashes })

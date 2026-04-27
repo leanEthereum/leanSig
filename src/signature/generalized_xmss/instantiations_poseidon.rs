@@ -1,3 +1,77 @@
+/// Demo-oriented instantiations with Lifetime 2^10
+pub mod lifetime_2_to_the_10 {
+    /// Instantiations based on the target sum encoding
+    pub mod target_sum {
+        use crate::{
+            inc_encoding::target_sum::TargetSumEncoding,
+            signature::generalized_xmss::GeneralizedXMSSSignatureScheme,
+            symmetric::{
+                message_hash::poseidon::PoseidonMessageHash, prf::shake_to_field::ShakePRFtoF,
+                tweak_hash::poseidon::PoseidonTweakHash,
+            },
+        };
+
+        const LOG_LIFETIME: usize = 10;
+        const PARAMETER_LEN: usize = 5;
+        const MSG_HASH_LEN_FE: usize = 5;
+        const HASH_LEN_FE: usize = 7;
+        const MSG_LEN_FE: usize = 9;
+        const TWEAK_LEN_FE: usize = 2;
+        const RAND_LEN: usize = 6;
+        const CAPACITY: usize = 9;
+
+        const BASE_W2: usize = 4;
+        const NUM_CHUNKS_W2: usize = 78;
+        type MHw2 = PoseidonMessageHash<
+            PARAMETER_LEN,
+            RAND_LEN,
+            MSG_HASH_LEN_FE,
+            NUM_CHUNKS_W2,
+            BASE_W2,
+            TWEAK_LEN_FE,
+            MSG_LEN_FE,
+        >;
+        type THw2 =
+            PoseidonTweakHash<PARAMETER_LEN, HASH_LEN_FE, TWEAK_LEN_FE, CAPACITY, NUM_CHUNKS_W2>;
+        type PRFw2 = ShakePRFtoF<HASH_LEN_FE, RAND_LEN>;
+        type IEw2<const TARGET_SUM: usize> = TargetSumEncoding<MHw2, TARGET_SUM>;
+
+        /// Demo instantiation with Lifetime 2^10, Target Sum encoding, and chunk size w = 2.
+        ///
+        /// This is intentionally much smaller than the paper-oriented benchmark schemes.
+        /// It exists to make browser and extension proof-of-concept work interactive.
+        pub type SIGTargetSumLifetime10W2NoOff =
+            GeneralizedXMSSSignatureScheme<PRFw2, IEw2<117>, THw2, LOG_LIFETIME>;
+
+        /// Demo instantiation with Lifetime 2^10, Target Sum encoding, and chunk size w = 2,
+        /// with a 10% target-sum offset.
+        pub type SIGTargetSumLifetime10W2Off10 =
+            GeneralizedXMSSSignatureScheme<PRFw2, IEw2<129>, THw2, LOG_LIFETIME>;
+
+        #[cfg(test)]
+        mod test {
+            use crate::signature::SignatureScheme;
+            use crate::signature::test_templates::test_signature_scheme_correctness;
+
+            use super::{SIGTargetSumLifetime10W2NoOff, SIGTargetSumLifetime10W2Off10};
+
+            #[test]
+            fn test_w2_correctness_demo() {
+                test_signature_scheme_correctness::<SIGTargetSumLifetime10W2NoOff>(
+                    21,
+                    0,
+                    SIGTargetSumLifetime10W2NoOff::LIFETIME as usize,
+                );
+                test_signature_scheme_correctness::<SIGTargetSumLifetime10W2Off10>(
+                    512,
+                    0,
+                    SIGTargetSumLifetime10W2Off10::LIFETIME as usize,
+                );
+            }
+        }
+    }
+}
+
 /// Instantiations with Lifetime 2^18
 pub mod lifetime_2_to_the_18 {
     /// Instantiations based on the target sum encoding

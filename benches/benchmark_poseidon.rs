@@ -1,4 +1,5 @@
 use std::hint::black_box;
+use std::time::Instant;
 
 use criterion::{Criterion, SamplingMode};
 use rand::RngExt;
@@ -8,6 +9,9 @@ use leansig::{
     signature::{
         SignatureScheme, SignatureSchemeSecretKey,
         generalized_xmss::instantiations_poseidon::{
+            lifetime_2_to_the_10::target_sum::{
+                SIGTargetSumLifetime10W2NoOff, SIGTargetSumLifetime10W2Off10,
+            },
             lifetime_2_to_the_18::target_sum::{
                 SIGTargetSumLifetime18W1NoOff, SIGTargetSumLifetime18W1Off10,
                 SIGTargetSumLifetime18W2NoOff, SIGTargetSumLifetime18W2Off10,
@@ -96,6 +100,75 @@ pub fn benchmark_signature_scheme<S: SignatureScheme>(c: &mut Criterion, descrip
     group.finish();
 }
 
+/// Benchmark the cost of shifting the secret key's prepared interval forward.
+///
+/// This benchmark intentionally excludes key generation from the timed region by
+/// pre-generating as many keys as Criterion asks us to consume.
+pub fn benchmark_preparation_scheme<S: SignatureScheme>(c: &mut Criterion, description: &str) {
+    let mut group = c.benchmark_group(format!("Poseidon preparation: {description}"));
+    group.sampling_mode(SamplingMode::Flat);
+    group.sample_size(30);
+
+    let log_lifetime = S::LIFETIME.ilog2() as usize;
+    let max_advances_per_key = (1usize << (log_lifetime / 2)).saturating_sub(2);
+    assert!(
+        max_advances_per_key > 0,
+        "advance_preparation benchmark requires at least one possible advance"
+    );
+
+    group.bench_function("- advance_preparation", |b| {
+        b.iter_custom(|iters| {
+            let mut rng = rand::rng();
+            let keys_needed = (iters as usize).div_ceil(max_advances_per_key);
+            let mut secret_keys: Vec<S::SecretKey> = (0..keys_needed)
+                .map(|_| S::key_gen(&mut rng, 0, S::LIFETIME as usize).1)
+                .collect();
+
+            let start = Instant::now();
+            let mut remaining = iters as usize;
+
+            for secret_key in &mut secret_keys {
+                if remaining == 0 {
+                    break;
+                }
+
+                let advances_for_key = remaining.min(max_advances_per_key);
+                for _ in 0..advances_for_key {
+                    secret_key.advance_preparation();
+                }
+
+                black_box(secret_key.get_prepared_interval());
+                remaining -= advances_for_key;
+            }
+
+            start.elapsed()
+        });
+    });
+
+    group.finish();
+}
+
+/// Benchmarking demo-friendly Lifetime 2^10 for Target Sum Encoding
+fn bench_lifetime10_target_sum(c: &mut Criterion) {
+    benchmark_signature_scheme::<SIGTargetSumLifetime10W2NoOff>(
+        c,
+        "Target Sum, Lifetime 2^10, w = 2, no offset",
+    );
+    benchmark_signature_scheme::<SIGTargetSumLifetime10W2Off10>(
+        c,
+        "Target Sum, Lifetime 2^10, w = 2, 10% offset",
+    );
+
+    benchmark_preparation_scheme::<SIGTargetSumLifetime10W2NoOff>(
+        c,
+        "Target Sum, Lifetime 2^10, w = 2, no offset",
+    );
+    benchmark_preparation_scheme::<SIGTargetSumLifetime10W2Off10>(
+        c,
+        "Target Sum, Lifetime 2^10, w = 2, 10% offset",
+    );
+}
+
 /// Benchmarking Lifetime 2^18 for Target Sum Encoding
 fn bench_lifetime18_target_sum(c: &mut Criterion) {
     benchmark_signature_scheme::<SIGTargetSumLifetime18W1NoOff>(
@@ -175,6 +248,9 @@ fn bench_lifetime20_target_sum(c: &mut Criterion) {
 }
 
 pub fn bench_function_poseidon(c: &mut Criterion) {
+    // benchmarking demo lifetime 2^10 - Target Sum
+    bench_lifetime10_target_sum(c);
+
     // benchmarking lifetime 2^18 - Target Sum
     bench_lifetime18_target_sum(c);
 
