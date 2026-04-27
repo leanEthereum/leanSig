@@ -2,11 +2,11 @@ use core::array;
 
 use p3_field::{Algebra, PackedValue, PrimeCharacteristicRing, PrimeField64};
 use p3_symmetric::CryptographicPermutation;
-use rayon::prelude::*;
 
 use crate::TWEAK_SEPARATOR_FOR_CHAIN_HASH;
 use crate::TWEAK_SEPARATOR_FOR_TREE_HASH;
 use crate::array::FieldArray;
+use crate::parallel::for_each_zipped_chunks_exact_mut;
 use crate::poseidon1_16;
 use crate::poseidon1_24;
 use crate::simd_utils::{pack_array, pack_even_into, pack_fn_into, pack_odd_into};
@@ -464,11 +464,12 @@ impl<
         let right_offset = PARAMETER_LEN + TWEAK_LEN + HASH_LEN;
 
         // Process SIMD batches with in-place mutation
-        parents
-            .par_chunks_exact_mut(WIDTH)
-            .zip(children.par_chunks_exact(2 * WIDTH))
-            .enumerate()
-            .for_each(|(chunk_idx, (parents_chunk, children_chunk))| {
+        for_each_zipped_chunks_exact_mut(
+            &mut parents,
+            WIDTH,
+            children,
+            2 * WIDTH,
+            |chunk_idx, parents_chunk, children_chunk| {
                 let parent_pos = (parent_start + chunk_idx * WIDTH) as u32;
 
                 // Assemble packed input directly: [parameter | tweak | left | right]
@@ -498,7 +499,8 @@ impl<
 
                 // Unpack directly to output slice
                 PackedF::unpack_into(&packed_parents, FieldArray::as_raw_slice_mut(parents_chunk));
-            });
+            },
+        );
 
         // Handle remainder (elements that don't fill a complete SIMD batch)
         let remainder_start = (children.len() / (2 * WIDTH)) * WIDTH;
@@ -587,10 +589,12 @@ impl<
         // Process epochs in batches of size `width`.
         // Each batch is handled by one thread.
         // Within each batch, SIMD processes `width` epochs simultaneously.
-        epochs
-            .par_chunks_exact(width)
-            .zip(leaves.par_chunks_exact_mut(width))
-            .for_each(|(epoch_chunk, leaves_chunk)| {
+        for_each_zipped_chunks_exact_mut(
+            &mut leaves,
+            width,
+            epochs,
+            width,
+            |_chunk_idx, leaves_chunk, epoch_chunk| {
                 // STEP 1: GENERATE AND PACK CHAIN STARTING POINTS
                 //
                 // For each chain, generate starting points for all epochs in the chunk.
@@ -715,7 +719,8 @@ impl<
                 // Convert from vertical packing back to scalar layout.
                 // Each lane becomes one leaf in the output slice.
                 PackedF::unpack_into(&packed_leaves, FieldArray::as_raw_slice_mut(leaves_chunk));
-            });
+            },
+        );
 
         // HANDLE REMAINDER EPOCHS
         //

@@ -111,6 +111,44 @@ Confidence intervals can also be shown via
 python3 benchmark-mean.py target --intervals
 ```
 
+For a focused comparison of the portable demo scheme with and without `rayon`, use
+
+```bash
+./scripts/collect_demo_perf.sh
+```
+
+## Web And Extension PoCs
+
+The repo now includes:
+
+- a minimal MV3 Chrome extension proof of concept in `examples/chrome-extension-poc/`
+- a `wasm-bindgen` wrapper crate in `crates/leansig-wasm/`
+
+The WASM wrapper exposes a small wallet-like API for:
+
+- key generation
+- secret/public key serialization
+- signing a 32-byte message for a chosen epoch
+- detached verification from only public key bytes, epoch, message bytes, and signature bytes
+- prepared-interval inspection and manual preparation advance
+
+The Chrome extension can be built in two modes:
+
+```bash
+# Fast interactive demo parameters: lifetime 2^10, w=2.
+./examples/chrome-extension-poc/build.sh
+
+# Larger benchmark-oriented parameters: lifetime 2^18, w=2.
+./examples/chrome-extension-poc/build.sh production
+```
+
+After building, open `chrome://extensions`, enable Developer mode, click `Load unpacked`,
+and select `examples/chrome-extension-poc/`. The extension page has buttons to generate a
+keypair, sign, verify, advance preparation, and run an in-Chrome performance sample.
+
+The extension packaging flow is documented in
+[examples/chrome-extension-poc/README.md](examples/chrome-extension-poc/README.md).
+
 ## License
 
 Apache Version 2.0.

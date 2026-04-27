@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LeanSig Wallet PoC</title>
+    <link rel="stylesheet" href="./wallet.css" />
+  </head>
+  <body data-self-test-status="idle">
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">LeanSig MV3 PoC</p>
+        <h1>Stateful signatures as an extension wallet.</h1>
+        <p class="lede">
+          This proof of concept packages a LeanXMSS-style scheme into a Chrome extension page.
+          The signing flow remains explicitly stateful: epochs are single-use, and the prepared
+          interval must keep moving forward.
+        </p>
+      </section>
+
+      <section class="grid">
+        <article class="panel panel-primary">
+          <h2>Runtime</h2>
+          <div class="status-line">
+            <span>Module</span>
+            <strong id="module-status">Loading…</strong>
+          </div>
+          <div class="status-line">
+            <span>Message length</span>
+            <strong id="message-length">-</strong>
+          </div>
+          <div class="status-line">
+            <span>Lifetime</span>
+            <strong id="lifetime">-</strong>
+          </div>
+          <div class="status-line">
+            <span>Context</span>
+            <strong id="runtime-context">Checking…</strong>
+          </div>
+          <div class="status-line">
+            <span>Storage backend</span>
+            <strong id="storage-backend">Checking…</strong>
+          </div>
+          <div class="status-line">
+            <span>Stored key</span>
+            <strong id="storage-status">Checking…</strong>
+          </div>
+          <div class="button-row">
+            <button id="generate-key">Generate Demo Key</button>
+            <button id="load-key" class="button-ghost">Load Stored Key</button>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h2>Key State</h2>
+          <div class="intervals">
+            <div>
+              <span class="label">Activation interval</span>
+              <strong id="activation-interval">-</strong>
+            </div>
+            <div>
+              <span class="label">Prepared interval</span>
+              <strong id="prepared-interval">-</strong>
+            </div>
+          </div>
+          <label for="secret-key-hex">Secret key bytes (hex)</label>
+          <textarea id="secret-key-hex" spellcheck="false"></textarea>
+          <div class="button-row">
+            <button id="import-key">Import Secret Key</button>
+            <button id="export-key" class="button-ghost">Refresh Export</button>
+          </div>
+        </article>
+
+        <article class="panel panel-wide">
+          <h2>Signing</h2>
+          <div class="form-grid">
+            <label for="epoch-input">Epoch</label>
+            <input id="epoch-input" type="number" min="0" step="1" />
+
+            <label for="message-hex">Message bytes (64 hex chars)</label>
+            <textarea id="message-hex" spellcheck="false">000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f</textarea>
+
+            <label for="signature-hex">Signature bytes (hex)</label>
+            <textarea id="signature-hex" spellcheck="false"></textarea>
+          </div>
+          <div class="button-row">
+            <button id="sign-message">Sign</button>
+            <button id="verify-message" class="button-ghost">Verify</button>
+            <button id="advance-preparation" class="button-ghost">Advance Preparation</button>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h2>Public Key</h2>
+          <label for="public-key-hex">Public key bytes (hex)</label>
+          <textarea id="public-key-hex" spellcheck="false"></textarea>
+        </article>
+
+        <article class="panel">
+          <h2>Log</h2>
+          <pre id="log-output"></pre>
+        </article>
+
+        <article class="panel panel-wide">
+          <h2>Performance Sample</h2>
+          <p class="lede lede-compact">
+            This runs the same in-page timing sample as the browser harness, but inside the MV3
+            extension page runtime.
+          </p>
+          <div class="button-row">
+            <button id="run-perf-sample">Run Perf Sample</button>
+          </div>
+          <pre id="perf-output">No sample collected yet.</pre>
+        </article>
+
+        <article id="self-test-panel" class="panel panel-wide" hidden>
+          <h2>Self-Test</h2>
+          <div class="status-line">
+            <span>Status</span>
+            <strong id="self-test-status">Idle</strong>
+          </div>
+          <pre id="self-test-output">No self-test run yet.</pre>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="./wallet.js"></script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "LeanSig Wallet PoC",
+  "version": "0.1.0",
+  "description": "Proof of concept Chrome extension for a stateful LeanXMSS-style signing flow.",
+  "permissions": ["storage"],
+  "action": {
+    "default_title": "Open LeanSig Wallet PoC"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  }
+}

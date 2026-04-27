@@ -16,6 +16,7 @@ pub(crate) type PackedF = <F as Field>::Packing;
 
 pub mod array;
 pub mod inc_encoding;
+pub(crate) mod parallel;
 pub mod serialization;
 pub mod signature;
 pub(crate) mod simd_utils;

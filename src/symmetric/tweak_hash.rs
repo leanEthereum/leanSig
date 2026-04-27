@@ -1,7 +1,6 @@
 use rand::RngExt;
 
-use rayon::prelude::*;
-
+use crate::parallel::map_chunks_exact;
 use crate::serialization::Serializable;
 use crate::symmetric::prf::Pseudorandom;
 
@@ -66,8 +65,9 @@ pub trait TweakableHash {
     /// # Returns
     /// A vector of parent nodes with length `children.len() / 2`.
     ///
-    /// This default implementation processes pairs in parallel using Rayon.
-    /// The Poseidon implementation overrides this with a SIMD-accelerated variant.
+    /// This default implementation can process pairs using the crate's optional
+    /// parallel backend. The Poseidon implementation overrides this with a
+    /// SIMD-accelerated variant.
     fn compute_tree_layer(
         parameter: &Self::Parameter,
         level: u8,
@@ -75,16 +75,12 @@ pub trait TweakableHash {
         children: &[Self::Domain],
     ) -> Vec<Self::Domain> {
         // default implementation is scalar. tweak_tree/poseidon.rs provides a SIMD variant
-        children
-            .par_chunks_exact(2)
-            .enumerate()
-            .map(|(i, children)| {
-                // Parent index in this layer
-                let parent_pos = (parent_start + i) as u32;
-                // Hash children into their parent using the tweak
-                Self::apply(parameter, &Self::tree_tweak(level, parent_pos), children)
-            })
-            .collect()
+        map_chunks_exact(children, 2, |i, children| {
+            // Parent index in this layer
+            let parent_pos = (parent_start + i) as u32;
+            // Hash children into their parent using the tweak
+            Self::apply(parameter, &Self::tree_tweak(level, parent_pos), children)
+        })
     }
 
     /// Computes bottom tree leaves by walking hash chains for multiple epochs.
