@@ -188,7 +188,7 @@ impl<IE: IncomparableEncoding, TH: TweakableHash> Decode for GeneralizedXMSSSign
 
 /// Public key for GeneralizedXMSSSignatureScheme
 /// It contains a Merkle root and a parameter for the tweakable hash
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct GeneralizedXMSSPublicKey<TH: TweakableHash> {
     root: TH::Domain,
     parameter: TH::Parameter,

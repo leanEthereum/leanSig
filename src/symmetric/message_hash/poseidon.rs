@@ -113,12 +113,12 @@ pub(crate) fn poseidon_message_hash_fe<
     let message_fe = encode_message::<MSG_LEN_FE>(message);
     let epoch_fe = encode_epoch::<TWEAK_LEN_FE>(epoch);
 
-    // now, we hash randomness, parameters, epoch, message using PoseidonCompress
-    let combined_input_vec: Vec<F> = randomness
+    // now, we hash message, parameters, epoch, randomness using PoseidonCompress
+    let combined_input_vec: Vec<F> = message_fe
         .iter()
         .chain(parameter.iter())
         .chain(epoch_fe.iter())
-        .chain(message_fe.iter())
+        .chain(randomness.iter())
         .copied()
         .collect();
 
