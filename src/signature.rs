@@ -288,6 +288,92 @@ mod test_templates {
         test_bincode_round_trip_consistency(&signature);
     }
 
+    /// Generic robustness test for any implementation of the `SignatureScheme`
+    /// trait.
+    ///
+    /// Where `test_signature_scheme_correctness` checks *completeness* (an
+    /// honestly produced signature is accepted), this checks the complementary
+    /// *rejection* properties that the security of the scheme relies on: an
+    /// honest signature must be **rejected** when it is verified against
+    /// - a different message (message binding),
+    /// - a different epoch (epoch binding), or
+    /// - a different public key (key binding).
+    ///
+    /// These are exactly the checks an adversary would try to bypass, and none
+    /// of them were previously exercised by the test suite.
+    pub fn test_signature_scheme_robustness<T: SignatureScheme>(
+        epoch: u32,
+        activation_epoch: usize,
+        num_active_epochs: usize,
+    ) {
+        // The epoch must be in the activation interval (same precondition as the
+        // correctness template, including the u64 cast to avoid overflow on the
+        // full 2^32 lifetime).
+        assert!(
+            activation_epoch as u32 <= epoch
+                && (epoch as u64) < (activation_epoch + num_active_epochs) as u64,
+            "Did not even try signing, epoch {:?} outside of activation interval {:?},{:?}",
+            epoch,
+            activation_epoch,
+            num_active_epochs
+        );
+
+        let mut rng = rand::rng();
+
+        // Honest key generation and signing.
+        let (pk, mut sk) = T::key_gen(&mut rng, activation_epoch, num_active_epochs);
+        let mut iterations = 0;
+        while !sk.get_prepared_interval().contains(&(epoch as u64)) && iterations < epoch {
+            sk.advance_preparation();
+            iterations += 1;
+        }
+        assert!(
+            sk.get_prepared_interval().contains(&(epoch as u64)),
+            "Did not even try signing, failed to advance key preparation to desired epoch {:?}.",
+            epoch
+        );
+        let message: [u8; MESSAGE_LENGTH] = rng.random();
+        let signature = T::sign(&sk, epoch, &message).expect("honest signing should succeed");
+
+        // Sanity: the honest signature must verify.
+        assert!(
+            T::verify(&pk, epoch, &message, &signature),
+            "honest signature was rejected (epoch {epoch:?})"
+        );
+
+        // (1) Message binding: a different message must be rejected.
+        let mut other_message: [u8; MESSAGE_LENGTH] = rng.random();
+        while other_message == message {
+            other_message = rng.random();
+        }
+        assert!(
+            !T::verify(&pk, epoch, &other_message, &signature),
+            "verify accepted a signature under a different message (epoch {epoch:?})"
+        );
+
+        // (2) Epoch binding: verifying at a different in-lifetime epoch must be
+        // rejected. Pick any other valid epoch in [0, LIFETIME).
+        if T::LIFETIME >= 2 {
+            let other_epoch = if (epoch as u64) + 1 < T::LIFETIME {
+                epoch + 1
+            } else {
+                epoch - 1
+            };
+            assert!(
+                !T::verify(&pk, other_epoch, &message, &signature),
+                "verify accepted a signature under a different epoch \
+                 (signed {epoch:?}, verified {other_epoch:?})"
+            );
+        }
+
+        // (3) Key binding: an independent key pair must not verify this signature.
+        let (other_pk, _other_sk) = T::key_gen(&mut rng, activation_epoch, num_active_epochs);
+        assert!(
+            !T::verify(&other_pk, epoch, &message, &signature),
+            "verify accepted a signature under a different public key (epoch {epoch:?})"
+        );
+    }
+
     fn test_bincode_round_trip_consistency<T: Serialize + DeserializeOwned>(ori: &T) {
         use bincode::serde::{decode_from_slice, encode_to_vec};
         let config = bincode::config::standard();

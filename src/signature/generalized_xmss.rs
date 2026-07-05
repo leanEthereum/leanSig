@@ -1080,7 +1080,9 @@ pub mod instantiations_poseidon;
 mod tests {
     use crate::{
         inc_encoding::target_sum::TargetSumEncoding,
-        signature::test_templates::test_signature_scheme_correctness,
+        signature::test_templates::{
+            test_signature_scheme_correctness, test_signature_scheme_robustness,
+        },
         symmetric::{
             message_hash::{
                 MessageHash,
@@ -1123,6 +1125,10 @@ mod tests {
         test_signature_scheme_correctness::<Sig>(19, 0, Sig::LIFETIME as usize);
         test_signature_scheme_correctness::<Sig>(0, 0, Sig::LIFETIME as usize);
         test_signature_scheme_correctness::<Sig>(11, 0, Sig::LIFETIME as usize);
+
+        // An honest signature must be rejected under a wrong message, epoch, or key.
+        test_signature_scheme_robustness::<Sig>(0, 0, Sig::LIFETIME as usize);
+        test_signature_scheme_robustness::<Sig>(11, 0, Sig::LIFETIME as usize);
     }
 
     #[test]
@@ -1210,6 +1216,10 @@ mod tests {
         test_signature_scheme_correctness::<Sig>(19, 0, Sig::LIFETIME as usize);
         test_signature_scheme_correctness::<Sig>(0, 0, Sig::LIFETIME as usize);
         test_signature_scheme_correctness::<Sig>(11, 0, Sig::LIFETIME as usize);
+
+        // An honest signature must be rejected under a wrong message, epoch, or key.
+        test_signature_scheme_robustness::<Sig>(0, 0, Sig::LIFETIME as usize);
+        test_signature_scheme_robustness::<Sig>(11, 0, Sig::LIFETIME as usize);
     }
 
     #[test]
@@ -1647,6 +1657,71 @@ mod tests {
         let sig2 = Sig::sign(&sk_decoded, epoch + 1, &message).unwrap();
         // Verify signature from decoded key validates
         assert!(Sig::verify(&pk, epoch + 1, &message, &sig2));
+    }
+
+    #[test]
+    fn test_verify_rejects_tampered_signature() {
+        // Note: do not use these parameters, they are just for testing.
+        type PRF = ShakePRFtoF<7, 5>;
+        type TH = PoseidonTweakW1L5;
+        type MH = PoseidonMessageHashW1;
+        const EXPECTED_SUM: usize = MH::DIMENSION * (MH::BASE - 1) / 2;
+        type IE = TargetSumEncoding<MH, EXPECTED_SUM>;
+        const LOG_LIFETIME: usize = 6;
+        type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
+
+        let mut rng = rand::rng();
+        let (pk, sk) = Sig::key_gen(&mut rng, 0, 1 << LOG_LIFETIME);
+        // Epoch 0 is always inside the initial prepared interval.
+        let epoch = 0u32;
+        let message: [u8; MESSAGE_LENGTH] = rng.random();
+        let mut signature = Sig::sign(&sk, epoch, &message).unwrap();
+        assert!(Sig::verify(&pk, epoch, &message, &signature));
+
+        // Tamper with the per-chain hashes by swapping two distinct entries.
+        // Each entry commits to a different WOTS chain, so the swapped signature
+        // is well-formed but must fail verification.
+        let j = signature
+            .hashes
+            .iter()
+            .position(|h| *h != signature.hashes[0])
+            .expect("signature should contain at least two distinct chain hashes");
+        signature.hashes.swap(0, j);
+        assert!(
+            !Sig::verify(&pk, epoch, &message, &signature),
+            "verify accepted a signature with tampered chain hashes"
+        );
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(8))]
+
+        /// Message binding under fuzzing: a signature produced for one message
+        /// must never verify against a different message.
+        #[test]
+        fn proptest_verify_rejects_wrong_message(
+            message in prop::array::uniform32(any::<u8>()),
+            other_message in prop::array::uniform32(any::<u8>()),
+        ) {
+            // Note: do not use these parameters, they are just for testing.
+            type PRF = ShakePRFtoF<7, 5>;
+            type TH = PoseidonTweakW1L5;
+            type MH = PoseidonMessageHashW1;
+            const EXPECTED_SUM: usize = MH::DIMENSION * (MH::BASE - 1) / 2;
+            type IE = TargetSumEncoding<MH, EXPECTED_SUM>;
+            const LOG_LIFETIME: usize = 6;
+            type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, LOG_LIFETIME>;
+
+            prop_assume!(message != other_message);
+
+            let mut rng = rand::rng();
+            let (pk, sk) = Sig::key_gen(&mut rng, 0, 1 << LOG_LIFETIME);
+            let epoch = 0u32;
+            let signature = Sig::sign(&sk, epoch, &message).unwrap();
+
+            prop_assert!(Sig::verify(&pk, epoch, &message, &signature));
+            prop_assert!(!Sig::verify(&pk, epoch, &other_message, &signature));
+        }
     }
 
     proptest! {
