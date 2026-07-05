@@ -91,13 +91,24 @@ impl<const N: usize> Decode for FieldArray<N> {
             });
         }
 
-        let arr = std::array::from_fn(|i| {
-            let start = i * F::NUM_BYTES;
-            let chunk = bytes[start..start + F::NUM_BYTES].try_into().unwrap();
-            F::new(u32::from_le_bytes(chunk))
-        });
+        let mut elements = [F::ZERO; N];
+        for (element, chunk) in elements.iter_mut().zip(bytes.chunks_exact(F::NUM_BYTES)) {
+            let limb = u32::from_le_bytes(chunk.try_into().unwrap());
+            // Reject non-canonical encodings. `F::new` reduces its argument mod p,
+            // so without this check a limb `v` and its alias `v + p` (which fits in
+            // a u32, since 2p - 1 < 2^32) would decode to the same field element,
+            // making the SSZ encoding of signatures and keys malleable. The SSZ
+            // contract requires the canonical representative in `[0, p)`.
+            if limb >= F::ORDER_U32 {
+                return Err(DecodeError::BytesInvalid(format!(
+                    "non-canonical field element {limb} (>= field modulus {})",
+                    F::ORDER_U32
+                )));
+            }
+            *element = F::new(limb);
+        }
 
-        Ok(Self(arr))
+        Ok(Self(elements))
     }
 }
 
@@ -191,6 +202,38 @@ mod tests {
 
         // Verify the values survived the round-trip
         assert_eq!(original, decoded, "Round-trip failed for max values");
+    }
+
+    #[test]
+    fn test_ssz_decode_rejects_non_canonical() {
+        // Encode a canonical array, then tamper a limb with a non-canonical
+        // representation. The decoder must reject it: otherwise two distinct byte
+        // strings decode to the same value, making serialized signatures and keys
+        // malleable.
+        let original = FieldArray([F::new(1), F::new(2), F::new(3)]);
+        let mut encoded = original.as_ssz_bytes();
+
+        // Sanity: the canonical encoding round-trips.
+        assert_eq!(FieldArray::<3>::from_ssz_bytes(&encoded).unwrap(), original);
+
+        // A limb equal to the modulus p is non-canonical and must be rejected.
+        encoded[0..F::NUM_BYTES].copy_from_slice(&F::ORDER_U32.to_le_bytes());
+        assert!(
+            FieldArray::<3>::from_ssz_bytes(&encoded).is_err(),
+            "decoder accepted a field element equal to the modulus"
+        );
+
+        // The concrete malleability vector: p + 1 is the alias of the first limb
+        // (value 1) and, before the fix, decoded to the same element.
+        encoded[0..F::NUM_BYTES].copy_from_slice(&(F::ORDER_U32 + 1).to_le_bytes());
+        assert!(
+            FieldArray::<3>::from_ssz_bytes(&encoded).is_err(),
+            "decoder accepted a non-canonical alias of a field element"
+        );
+
+        // The largest canonical value, p - 1, is still accepted.
+        encoded[0..F::NUM_BYTES].copy_from_slice(&(F::ORDER_U32 - 1).to_le_bytes());
+        assert!(FieldArray::<3>::from_ssz_bytes(&encoded).is_ok());
     }
 
     #[test]
