@@ -122,7 +122,7 @@ pub(crate) fn poseidon_message_hash_fe<
         .copied()
         .collect();
 
-    poseidon_compress::<F, _, 24, HASH_LEN_FE>(&perm, &combined_input_vec)
+    poseidon_compress::<F, _, 24, HASH_LEN_FE>(perm, &combined_input_vec)
 }
 
 /// A message hash implemented using Poseidon1

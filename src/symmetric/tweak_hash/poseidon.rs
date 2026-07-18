@@ -393,7 +393,7 @@ impl<
 
                 FieldArray(
                     poseidon_compress::<_, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
-                        &perm,
+                        perm,
                         &combined_input,
                     ),
                 )
@@ -415,7 +415,7 @@ impl<
 
                 FieldArray(
                     poseidon_compress::<_, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
-                        &perm,
+                        perm,
                         &combined_input,
                     ),
                 )
@@ -437,13 +437,13 @@ impl<
                     NUM_CHUNKS as u32,
                     HASH_LEN as u32,
                 ];
-                let capacity_value = poseidon_safe_domain_separator::<CAPACITY>(&perm, &lengths);
+                let capacity_value = poseidon_safe_domain_separator::<CAPACITY>(perm, &lengths);
                 FieldArray(poseidon_replacement_sponge::<
                     _,
                     _,
                     MERGE_COMPRESSION_WIDTH,
                     HASH_LEN,
-                >(&perm, &capacity_value, &combined_input))
+                >(perm, &capacity_value, &combined_input))
             }
             _ => FieldArray([F::ONE; HASH_LEN]), // Unreachable case, added for safety
         }
@@ -506,7 +506,7 @@ impl<
                 // Compress all WIDTH parent pairs simultaneously
                 let packed_parents =
                     poseidon_compress::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
-                        &perm,
+                        perm,
                         &packed_input,
                     );
 
@@ -583,7 +583,7 @@ impl<
             HASH_LEN as u32,
         ];
         let capacity_val: [PackedF; CAPACITY] =
-            poseidon_safe_domain_separator::<CAPACITY>(&sponge_perm, &lengths).map(PackedF::from);
+            poseidon_safe_domain_separator::<CAPACITY>(sponge_perm, &lengths).map(PackedF::from);
 
         // Compute sponge input length. Required to init packed input vector for each rayon worker
         let sponge_tweak_offset = PARAMETER_LEN;
@@ -673,7 +673,7 @@ impl<
                         // This single call processes all epochs in parallel.
                         *packed_chain =
                             poseidon_compress::<PackedF, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
-                                &chain_perm,
+                                chain_perm,
                                 &packed_input,
                             );
                     }
@@ -721,7 +721,7 @@ impl<
                     // Apply the sponge hash to produce the leaf.
                     // This absorbs all chain ends and squeezes out the final hash.
                     poseidon_replacement_sponge::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
-                        &sponge_perm,
+                        sponge_perm,
                         &capacity_val,
                         packed_leaf_input,
                     )
