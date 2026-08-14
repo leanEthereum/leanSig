@@ -60,6 +60,18 @@ with-gen-benches-poseidon = []
 name = "benchmark"
 harness = false
 
+[[test]]
+name = "inc_encoding_target_sum"
+path = "tests/inc_encoding/target_sum.rs"
+
+[[test]]
+name = "shake_to_field"
+path = "tests/symmetric/prf/shake_to_field.rs"
+
+[[test]]
+name = "tweak_hash"
+path = "tests/symmetric/tweak_hash.rs"
+
 [profile.profiling]
 inherits = "release"
 debug = true
