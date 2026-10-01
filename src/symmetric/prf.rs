@@ -25,6 +25,16 @@ pub trait Pseudorandom {
         message: &[u8; MESSAGE_LENGTH],
         counter: u64,
     ) -> Self::Randomness;
+
+    /// Prepare the invariant prefix of a randomness stream. The returned
+    /// function must match get_randomness for every counter.
+    fn randomness_generator<'a>(
+        key: &'a Self::Key,
+        epoch: u32,
+        message: &'a [u8; MESSAGE_LENGTH],
+    ) -> impl Fn(u64) -> Self::Randomness + Sync + 'a {
+        move |counter| Self::get_randomness(key, epoch, message, counter)
+    }
 }
 
 pub mod shake_to_field;

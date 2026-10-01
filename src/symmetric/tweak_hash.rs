@@ -48,6 +48,28 @@ pub trait TweakableHash {
         message: &[Self::Domain],
     ) -> Self::Domain;
 
+    /// Derive chain starts and walk to each signing position. Hash-specific
+    /// implementations may batch independent chains without changing outputs.
+    fn sign_chains<PRF: Pseudorandom>(
+        prf_key: &PRF::Key,
+        parameter: &Self::Parameter,
+        epoch: u32,
+        steps: &[u8],
+    ) -> Vec<Self::Domain>
+    where
+        PRF::Domain: Into<Self::Domain>,
+        Self: Sized,
+    {
+        steps
+            .par_iter()
+            .enumerate()
+            .map(|(index, &steps)| {
+                let start = PRF::get_domain_element(prf_key, epoch, index as u64).into();
+                chain::<Self>(parameter, epoch, index as u8, 0, steps as usize, &start)
+            })
+            .collect()
+    }
+
     /// Computes one layer of a Merkle tree by hashing pairs of children into parents.
     ///
     /// Consecutive pairs of child nodes produce their parent node by hashing

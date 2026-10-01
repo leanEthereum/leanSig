@@ -37,6 +37,28 @@ pub trait MessageHash {
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
     ) -> Result<Vec<u8>, Self::Error>;
+
+    /// Search for the first hash whose chunks have the requested sum.
+    /// The default preserves scalar behavior for hash implementations without
+    /// a prepared or batched search path.
+    fn find_target_sum(
+        parameter: &Self::Parameter,
+        message: &[u8; MESSAGE_LENGTH],
+        epoch: u32,
+        target: usize,
+        max_tries: usize,
+        randomness: impl Fn(u64) -> Self::Randomness + Sync,
+    ) -> Option<(Self::Randomness, Vec<u8>)> {
+        for counter in 0..max_tries {
+            let rho = randomness(counter as u64);
+            if let Ok(chunks) = Self::apply(parameter, epoch, &rho, message) {
+                if chunks.iter().map(|&x| x as usize).sum::<usize>() == target {
+                    return Some((rho, chunks));
+                }
+            }
+        }
+        None
+    }
 }
 
 pub mod aborting;

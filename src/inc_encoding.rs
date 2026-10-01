@@ -45,6 +45,23 @@ pub trait IncomparableEncoding {
         randomness: &Self::Randomness,
         epoch: u32,
     ) -> Result<Vec<u8>, Self::Error>;
+
+    /// Find the first valid encoding in counter order. Implementations may
+    /// prepare invariant inputs or batch trials, but must preserve this order.
+    fn find_encoding(
+        parameter: &Self::Parameter,
+        message: &[u8; MESSAGE_LENGTH],
+        epoch: u32,
+        randomness: impl Fn(u64) -> Self::Randomness + Sync,
+    ) -> Option<(Self::Randomness, Vec<u8>)> {
+        for counter in 0..Self::MAX_TRIES {
+            let rho = randomness(counter as u64);
+            if let Ok(chunks) = Self::encode(parameter, message, &rho, epoch) {
+                return Some((rho, chunks));
+            }
+        }
+        None
+    }
 }
 
 pub mod target_sum;

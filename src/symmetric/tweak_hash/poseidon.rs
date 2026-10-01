@@ -47,26 +47,26 @@ impl PoseidonTweak {
                 level,
                 pos_in_level,
             } => {
-                ((*level as u128) << 40)
-                    | ((*pos_in_level as u128) << 8)
-                    | (TWEAK_SEPARATOR_FOR_TREE_HASH as u128)
+                ((*level as u64) << 40)
+                    | ((*pos_in_level as u64) << 8)
+                    | (TWEAK_SEPARATOR_FOR_TREE_HASH as u64)
             }
             Self::ChainTweak {
                 epoch,
                 chain_index,
                 pos_in_chain,
             } => {
-                ((*epoch as u128) << 24)
-                    | ((*chain_index as u128) << 16)
-                    | ((*pos_in_chain as u128) << 8)
-                    | (TWEAK_SEPARATOR_FOR_CHAIN_HASH as u128)
+                ((*epoch as u64) << 24)
+                    | ((*chain_index as u64) << 16)
+                    | ((*pos_in_chain as u64) << 8)
+                    | (TWEAK_SEPARATOR_FOR_CHAIN_HASH as u64)
             }
         };
 
         // Now we interpret this integer in base-p to get field elements
         std::array::from_fn(|_| {
-            let digit = (acc % F::ORDER_U64 as u128) as u64;
-            acc /= F::ORDER_U64 as u128;
+            let digit = acc % F::ORDER_U64;
+            acc /= F::ORDER_U64;
             F::from_u64(digit)
         })
     }
@@ -276,6 +276,74 @@ impl<
     const TWEAK_LEN: usize,
     const CAPACITY: usize,
     const NUM_CHUNKS: usize,
+> PoseidonTweakHash<PARAMETER_LEN, HASH_LEN, TWEAK_LEN, CAPACITY, NUM_CHUNKS>
+{
+    // Compile-time parameter validation for PoseidonTweakHash
+    //
+    // DKKW25: https://eprint.iacr.org/2025/055
+    const PARAMETER_CHECK: () = {
+        // The hash output space H = F_p^η and public parameter space
+        // P = F_p^l_p must both be non-empty.
+        assert!(
+            HASH_LEN >= 1,
+            "Poseidon Tweak Hash: HASH_LEN (η) must be at least 1"
+        );
+        assert!(
+            PARAMETER_LEN >= 1,
+            "Poseidon Tweak Hash: PARAMETER_LEN (l_p) must be at least 1"
+        );
+
+        // Leaf hashing uses a sponge construction with rate = 24 - CAPACITY.
+        // The capacity must leave room for at least one rate element.
+        assert!(
+            CAPACITY < 24,
+            "Poseidon Tweak Hash: Capacity must be less than 24"
+        );
+
+        // Chain hashing: Th(P, T, M) for M ∈ H uses compression mode
+        // with width 16. Input = [P || T || M].
+        assert!(
+            PARAMETER_LEN + TWEAK_LEN + HASH_LEN <= 16,
+            "Poseidon Tweak Chain Hash: Input lengths too large for Poseidon instance"
+        );
+
+        // Tree hashing: Th(P, T, M) for M ∈ H² uses compression mode
+        // with width 24. Input = [P || T || left || right].
+        assert!(
+            PARAMETER_LEN + TWEAK_LEN + 2 * HASH_LEN <= 24,
+            "Poseidon Tweak Tree Hash: Input lengths too large for Poseidon instance"
+        );
+
+        // Leaf hashing: the sponge capacity value V_c is derived from
+        // 4 domain parameters (each 32 bits = 128 bits total) via a
+        // width-24 Poseidon compression.
+        let bits_per_fe = F::ORDER_U64.ilog2() as usize;
+        assert!(
+            bits_per_fe * 24 >= DOMAIN_PARAMETERS_LENGTH * 32,
+            "Poseidon Tweak Leaf Hash: not enough field elements to hash the domain separator"
+        );
+
+        // Tweak encoding: the tree tweak packs 32 (pos_in_level) + 8
+        // (level) = 40 bits; the chain tweak packs 32 (epoch) + 8
+        // (chain_index) + 8 (pos_in_chain) + 8 (separator) = 56 bits.
+        let tweak_fe_bits = bits_per_fe * TWEAK_LEN;
+        assert!(
+            tweak_fe_bits >= 40,
+            "Poseidon Tweak Hash: not enough field elements to encode the tree tweak"
+        );
+        assert!(
+            tweak_fe_bits >= 56,
+            "Poseidon Tweak Hash: not enough field elements to encode the chain tweak"
+        );
+    };
+}
+
+impl<
+    const PARAMETER_LEN: usize,
+    const HASH_LEN: usize,
+    const TWEAK_LEN: usize,
+    const CAPACITY: usize,
+    const NUM_CHUNKS: usize,
 > TweakableHash for PoseidonTweakHash<PARAMETER_LEN, HASH_LEN, TWEAK_LEN, CAPACITY, NUM_CHUNKS>
 {
     type Parameter = FieldArray<PARAMETER_LEN>;
@@ -307,69 +375,84 @@ impl<
         }
     }
 
+    fn sign_chains<PRF: Pseudorandom>(
+        prf_key: &PRF::Key,
+        parameter: &Self::Parameter,
+        epoch: u32,
+        steps: &[u8],
+    ) -> Vec<Self::Domain>
+    where
+        PRF::Domain: Into<Self::Domain>,
+    {
+        let () = Self::PARAMETER_CHECK;
+        assert!(steps.len() <= 256);
+        assert!(HASH_LEN + PARAMETER_LEN + TWEAK_LEN <= CHAIN_COMPRESSION_WIDTH);
+        // Group similar chain lengths to reduce inactive SIMD lanes. The
+        // original indices remain in tweaks and in the returned signature.
+        let mut order: Vec<_> = (0..steps.len()).collect();
+        order.sort_unstable_by_key(|&index| steps[index]);
+        let groups: Vec<_> = order
+            .par_chunks(PackedF::WIDTH)
+            .map(|indices| {
+                let starts: [Self::Domain; PackedF::WIDTH] = array::from_fn(|lane| {
+                    PRF::get_domain_element(prf_key, epoch, indices[lane % indices.len()] as u64)
+                        .into()
+                });
+                let mut input = [PackedF::ZERO; CHAIN_COMPRESSION_WIDTH];
+                input[..HASH_LEN].copy_from_slice(&pack_array(&starts));
+                for i in 0..PARAMETER_LEN {
+                    input[HASH_LEN + i] = PackedF::from(parameter[i]);
+                }
+                let max_steps = indices.iter().map(|&index| steps[index]).max().unwrap();
+                for position in 1..=max_steps {
+                    let tweaks: [[F; TWEAK_LEN]; PackedF::WIDTH] = array::from_fn(|lane| {
+                        Self::chain_tweak(epoch, indices[lane % indices.len()] as u8, position)
+                            .to_field_elements()
+                    });
+                    for i in 0..TWEAK_LEN {
+                        input[HASH_LEN + PARAMETER_LEN + i] =
+                            PackedF::from_fn(|lane| tweaks[lane][i]);
+                    }
+                    let output = poseidon_compress::<PackedF, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
+                        poseidon1_16(),
+                        &input,
+                    );
+                    for i in 0..HASH_LEN {
+                        let previous = input[i];
+                        input[i] = PackedF::from_fn(|lane| {
+                            if position <= steps[indices[lane % indices.len()]] {
+                                output[i].as_slice()[lane]
+                            } else {
+                                previous.as_slice()[lane]
+                            }
+                        });
+                    }
+                }
+                indices
+                    .iter()
+                    .enumerate()
+                    .map(|(lane, &index)| {
+                        (
+                            index,
+                            FieldArray(array::from_fn(|i| input[i].as_slice()[lane])),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let mut hashes = vec![FieldArray([F::ZERO; HASH_LEN]); steps.len()];
+        for (index, hash) in groups.into_iter().flatten() {
+            hashes[index] = hash;
+        }
+        hashes
+    }
+
     fn apply(
         parameter: &Self::Parameter,
         tweak: &Self::Tweak,
         message: &[Self::Domain],
     ) -> Self::Domain {
-        // Compile-time parameter validation for PoseidonTweakHash
-        //
-        // DKKW25: https://eprint.iacr.org/2025/055
-        const {
-            // The hash output space H = F_p^η and public parameter space
-            // P = F_p^l_p must both be non-empty.
-            assert!(
-                HASH_LEN >= 1,
-                "Poseidon Tweak Hash: HASH_LEN (η) must be at least 1"
-            );
-            assert!(
-                PARAMETER_LEN >= 1,
-                "Poseidon Tweak Hash: PARAMETER_LEN (l_p) must be at least 1"
-            );
-
-            // Leaf hashing uses a sponge construction with rate = 24 - CAPACITY.
-            // The capacity must leave room for at least one rate element.
-            assert!(
-                CAPACITY < 24,
-                "Poseidon Tweak Hash: Capacity must be less than 24"
-            );
-
-            // Chain hashing: Th(P, T, M) for M ∈ H uses compression mode
-            // with width 16. Input = [P || T || M].
-            assert!(
-                PARAMETER_LEN + TWEAK_LEN + HASH_LEN <= 16,
-                "Poseidon Tweak Chain Hash: Input lengths too large for Poseidon instance"
-            );
-
-            // Tree hashing: Th(P, T, M) for M ∈ H² uses compression mode
-            // with width 24. Input = [P || T || left || right].
-            assert!(
-                PARAMETER_LEN + TWEAK_LEN + 2 * HASH_LEN <= 24,
-                "Poseidon Tweak Tree Hash: Input lengths too large for Poseidon instance"
-            );
-
-            // Leaf hashing: the sponge capacity value V_c is derived from
-            // 4 domain parameters (each 32 bits = 128 bits total) via a
-            // width-24 Poseidon compression.
-            let bits_per_fe = F::ORDER_U64.ilog2() as usize;
-            assert!(
-                bits_per_fe * 24 >= DOMAIN_PARAMETERS_LENGTH * 32,
-                "Poseidon Tweak Leaf Hash: not enough field elements to hash the domain separator"
-            );
-
-            // Tweak encoding: the tree tweak packs 32 (pos_in_level) + 8
-            // (level) = 40 bits; the chain tweak packs 32 (epoch) + 8
-            // (chain_index) + 8 (pos_in_chain) + 8 (separator) = 56 bits.
-            let tweak_fe_bits = bits_per_fe * TWEAK_LEN;
-            assert!(
-                tweak_fe_bits >= 40,
-                "Poseidon Tweak Hash: not enough field elements to encode the tree tweak"
-            );
-            assert!(
-                tweak_fe_bits >= 56,
-                "Poseidon Tweak Hash: not enough field elements to encode the chain tweak"
-            );
-        }
+        let () = Self::PARAMETER_CHECK;
 
         // we are in one of three cases:
         // (1) hashing within chains. We use compression mode.
@@ -393,7 +476,7 @@ impl<
 
                 FieldArray(
                     poseidon_compress::<_, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
-                        &perm,
+                        perm,
                         &combined_input,
                     ),
                 )
@@ -415,7 +498,7 @@ impl<
 
                 FieldArray(
                     poseidon_compress::<_, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
-                        &perm,
+                        perm,
                         &combined_input,
                     ),
                 )
@@ -437,13 +520,13 @@ impl<
                     NUM_CHUNKS as u32,
                     HASH_LEN as u32,
                 ];
-                let capacity_value = poseidon_safe_domain_separator::<CAPACITY>(&perm, &lengths);
+                let capacity_value = poseidon_safe_domain_separator::<CAPACITY>(perm, &lengths);
                 FieldArray(poseidon_replacement_sponge::<
                     _,
                     _,
                     MERGE_COMPRESSION_WIDTH,
                     HASH_LEN,
-                >(&perm, &capacity_value, &combined_input))
+                >(perm, &capacity_value, &combined_input))
             }
             _ => FieldArray([F::ONE; HASH_LEN]), // Unreachable case, added for safety
         }
@@ -506,7 +589,7 @@ impl<
                 // Compress all WIDTH parent pairs simultaneously
                 let packed_parents =
                     poseidon_compress::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
-                        &perm,
+                        perm,
                         &packed_input,
                     );
 
@@ -583,7 +666,7 @@ impl<
             HASH_LEN as u32,
         ];
         let capacity_val: [PackedF; CAPACITY] =
-            poseidon_safe_domain_separator::<CAPACITY>(&sponge_perm, &lengths).map(PackedF::from);
+            poseidon_safe_domain_separator::<CAPACITY>(sponge_perm, &lengths).map(PackedF::from);
 
         // Compute sponge input length. Required to init packed input vector for each rayon worker
         let sponge_tweak_offset = PARAMETER_LEN;
@@ -673,7 +756,7 @@ impl<
                         // This single call processes all epochs in parallel.
                         *packed_chain =
                             poseidon_compress::<PackedF, _, CHAIN_COMPRESSION_WIDTH, HASH_LEN>(
-                                &chain_perm,
+                                chain_perm,
                                 &packed_input,
                             );
                     }
@@ -721,7 +804,7 @@ impl<
                     // Apply the sponge hash to produce the leaf.
                     // This absorbs all chain ends and squeezes out the final hash.
                     poseidon_replacement_sponge::<PackedF, _, MERGE_COMPRESSION_WIDTH, HASH_LEN>(
-                        &sponge_perm,
+                        sponge_perm,
                         &capacity_val,
                         packed_leaf_input,
                     )
@@ -785,6 +868,36 @@ mod tests {
     use rand::RngExt;
 
     use super::*;
+
+    #[test]
+    fn signing_chains_match_scalar_for_variable_lengths_and_partial_groups() {
+        use crate::symmetric::prf::shake_to_field::ShakePRFtoF;
+        use rand::{SeedableRng, rngs::StdRng};
+        type TH = PoseidonTweakHash<5, 7, 2, 9, 20>;
+        type PRF = ShakePRFtoF<7, 6>;
+        let mut rng = StdRng::seed_from_u64(43);
+        let parameter = TH::rand_parameter(&mut rng);
+        let key = PRF::key_gen(&mut rng);
+        for count in [0, 1, 3, 4, 5, 20, 39, 78, 155, 256] {
+            let mut steps: Vec<u8> = (0..count).map(|_| rng.random()).collect();
+            if count >= 3 {
+                steps[..3].copy_from_slice(&[0, 1, 255]);
+            }
+            let epoch = u32::MAX;
+            let expected: Vec<_> = steps
+                .iter()
+                .enumerate()
+                .map(|(index, &steps)| {
+                    let start = PRF::get_domain_element(&key, epoch, index as u64).into();
+                    chain::<TH>(&parameter, epoch, index as u8, 0, steps as usize, &start)
+                })
+                .collect();
+            assert_eq!(
+                TH::sign_chains::<PRF>(&key, &parameter, epoch, &steps),
+                expected
+            );
+        }
+    }
     use crate::symmetric::prf::shake_to_field::ShakePRFtoF;
     use p3_field::PrimeField32;
     use proptest::prelude::*;
