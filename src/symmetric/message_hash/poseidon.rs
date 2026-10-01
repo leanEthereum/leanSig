@@ -1,14 +1,17 @@
 use std::convert::Infallible;
 
 use num_bigint::BigUint;
+use p3_field::PackedValue;
 use p3_field::PrimeCharacteristicRing;
 use p3_field::PrimeField;
 use p3_field::PrimeField64;
+use rayon::prelude::*;
 use serde::{Serialize, de::DeserializeOwned};
 
 use super::MessageHash;
 use crate::F;
 use crate::MESSAGE_LENGTH;
+use crate::PackedF;
 use crate::TWEAK_SEPARATOR_FOR_MESSAGE_HASH;
 use crate::array::FieldArray;
 use crate::poseidon1_24;
@@ -78,6 +81,31 @@ pub fn encode_epoch<const TWEAK_LEN_FE: usize>(epoch: u32) -> [F; TWEAK_LEN_FE] 
 fn decode_to_chunks<const DIMENSION: usize, const BASE: usize, const HASH_LEN_FE: usize>(
     field_elements: &[F; HASH_LEN_FE],
 ) -> [u8; DIMENSION] {
+    if BASE.is_power_of_two() {
+        // HASH_LEN_FE base-p digits fit in HASH_LEN_FE 32-bit limbs since
+        // KoalaBear is a 31-bit field. Keep the original big-endian digit order.
+        let mut limbs = [0u32; HASH_LEN_FE];
+        for fe in field_elements {
+            let mut carry = fe.as_canonical_u64();
+            for limb in &mut limbs {
+                let value = (*limb as u64) * F::ORDER_U64 + carry;
+                *limb = value as u32;
+                carry = value >> 32;
+            }
+            debug_assert_eq!(carry, 0);
+        }
+        let bits = BASE.trailing_zeros() as usize;
+        return std::array::from_fn(|i| {
+            let bit = i * bits;
+            let index = bit / 32;
+            let shift = bit % 32;
+            let mut value = limbs.get(index).copied().unwrap_or(0) as u64 >> shift;
+            if shift + bits > 32 {
+                value |= (limbs.get(index + 1).copied().unwrap_or(0) as u64) << (32 - shift);
+            }
+            (value & (BASE as u64 - 1)) as u8
+        });
+    }
     // Combine field elements into one big integer
     let mut acc = BigUint::ZERO;
     for fe in field_elements {
@@ -122,7 +150,7 @@ pub(crate) fn poseidon_message_hash_fe<
         .copied()
         .collect();
 
-    poseidon_compress::<F, _, 24, HASH_LEN_FE>(&perm, &combined_input_vec)
+    poseidon_compress::<F, _, 24, HASH_LEN_FE>(perm, &combined_input_vec)
 }
 
 /// A message hash implemented using Poseidon1
@@ -143,6 +171,126 @@ pub struct PoseidonMessageHash<
     const TWEAK_LEN_FE: usize,
     const MSG_LEN_FE: usize,
 >;
+
+impl<
+    const PARAMETER_LEN: usize,
+    const RAND_LEN_FE: usize,
+    const HASH_LEN_FE: usize,
+    const DIMENSION: usize,
+    const BASE: usize,
+    const TWEAK_LEN_FE: usize,
+    const MSG_LEN_FE: usize,
+>
+    PoseidonMessageHash<
+        PARAMETER_LEN,
+        RAND_LEN_FE,
+        HASH_LEN_FE,
+        DIMENSION,
+        BASE,
+        TWEAK_LEN_FE,
+        MSG_LEN_FE,
+    >
+{
+    // Compile-time parameter validation for Poseidon Message Hash
+    //
+    // This hash implements Th_msg from DKKW25. It takes:
+    //
+    //   Th_msg(P, T, M, R) = Decode_{p,η',w}(
+    //       PoseidonCompress_{p, t_msg, η'}(R || P || EncT(T) || EncM(M))
+    //   )
+    //
+    // The output is a vector of DIMENSION chunks, each in {0, ..., BASE-1}.
+    // This is used inside the incomparable encoding to map (message, seed)
+    // to a hypercube vertex x ∈ Z_w^v before the target sum filter.
+    //
+    // DKKW25: https://eprint.iacr.org/2025/055
+    const PARAMETER_CHECK: () = {
+        // Poseidon capacity constraints
+        //
+        // We use Poseidon in compression mode with a width-24 permutation.
+        // The entire input (R || P || T || M) must fit in one call, and
+        // the output η' field elements are extracted from the same state.
+        assert!(
+            PARAMETER_LEN + TWEAK_LEN_FE + RAND_LEN_FE + MSG_LEN_FE <= 24,
+            "Poseidon of width 24 is not enough for the input"
+        );
+        assert!(
+            HASH_LEN_FE <= 24,
+            "Poseidon of width 24 is not enough for the output"
+        );
+
+        // Non-trivial output
+        //
+        // The hash must produce at least one field element to be useful.
+        assert!(
+            HASH_LEN_FE >= 1,
+            "Poseidon Message Hash: HASH_LEN_FE must be at least 1"
+        );
+
+        // Representation constraints
+        //
+        // The Generalized XMSS construction (DKKW25) stores chunk values
+        // and chain indices as u8 in the signature and tweak encodings.
+        // BASE (= w) and DIMENSION (= v) must each fit in one byte.
+        assert!(
+            BASE <= 1 << 8,
+            "Poseidon Message Hash: Base must be at most 2^8"
+        );
+        assert!(
+            DIMENSION <= 1 << 8,
+            "Poseidon Message Hash: Dimension must be at most 2^8"
+        );
+
+        // Encoding well-formedness
+        //
+        // Definition 13 (DKKW25): the incomparable encoding maps into
+        // {0, ..., w-1}^v with w ≥ 2. A single-element alphabet makes
+        // the code trivial and incomparability vacuous.
+        assert!(BASE >= 2, "Poseidon Message Hash: BASE must be at least 2");
+
+        // Injective encoding of inputs
+        //
+        // The message (32 bytes = 256 bits) is encoded into MSG_LEN_FE
+        // field elements via base-p decomposition. For this to be
+        // injective, the output space must be at least as large:
+        //
+        //   p^MSG_LEN_FE  ≥  2^(8 * MESSAGE_LENGTH)
+        //   ⟹  ⌊log2(p)⌋ * MSG_LEN_FE  ≥  8 * MESSAGE_LENGTH
+        let bits_per_fe = F::ORDER_U64.ilog2() as usize;
+        assert!(
+            bits_per_fe * MSG_LEN_FE >= 8 * MESSAGE_LENGTH,
+            "Poseidon Message Hash: not enough field elements to encode the message"
+        );
+
+        // The epoch tweak (DKKW25) packs a u32 epoch and an
+        // 8-bit domain separator into one value, requiring 40 bits total:
+        //
+        //   tweakm(ep) = (0x02 || ep)     ← 8 + 32 = 40 bits
+        //                 sep    epoch
+        //
+        // The field element representation needs enough capacity:
+        //   ⌊log2(p)⌋ * TWEAK_LEN_FE  ≥  40
+        assert!(
+            bits_per_fe * TWEAK_LEN_FE >= 40,
+            "Poseidon Message Hash: not enough field elements to encode the epoch tweak"
+        );
+
+        // Injective decoding to chunks
+        //
+        // The hash output (η' field elements) is decoded via Decode_{p,η',w}
+        // (DKKW25): interpret the η' elements as one big integer
+        // and express it in base w to get DIMENSION chunks.
+        //
+        // For injectivity, the big integer must have enough room:
+        //   p^η'  ≤  w^DIMENSION
+        //   ⟹  ⌊log2(p)⌋ * HASH_LEN_FE  ≤  DIMENSION * ⌈log2(w)⌉
+        let chunk_size = (usize::BITS - (BASE - 1).leading_zeros()) as usize;
+        assert!(
+            bits_per_fe * HASH_LEN_FE <= DIMENSION * chunk_size,
+            "Poseidon Message Hash: not enough chunks to decode the hash output"
+        );
+    };
+}
 
 impl<
     const PARAMETER_LEN: usize,
@@ -180,111 +328,84 @@ where
         FieldArray(rng.random())
     }
 
+    fn find_target_sum(
+        parameter: &Self::Parameter,
+        message: &[u8; MESSAGE_LENGTH],
+        epoch: u32,
+        target: usize,
+        max_tries: usize,
+        randomness: impl Fn(u64) -> Self::Randomness + Sync,
+    ) -> Option<(Self::Randomness, Vec<u8>)> {
+        let () = Self::PARAMETER_CHECK;
+        let message_fe = encode_message::<MSG_LEN_FE>(message);
+        let epoch_fe = encode_epoch::<TWEAK_LEN_FE>(epoch);
+        let mut input = [PackedF::ZERO; 24];
+        for (dest, value) in input.iter_mut().zip(
+            message_fe
+                .iter()
+                .chain(parameter.iter())
+                .chain(epoch_fe.iter()),
+        ) {
+            *dest = PackedF::from(*value);
+        }
+        let rand_offset = MSG_LEN_FE + PARAMETER_LEN + TWEAK_LEN_FE;
+        let search = |start: usize, end: usize| {
+            let mut input = input;
+            for first in (start..end).step_by(PackedF::WIDTH) {
+                let count = (end - first).min(PackedF::WIDTH);
+                let mut rhos = [FieldArray([F::ZERO; RAND_LEN_FE]); PackedF::WIDTH];
+                for (lane, rho) in rhos.iter_mut().take(count).enumerate() {
+                    *rho = randomness((first + lane) as u64);
+                }
+                for i in 0..RAND_LEN_FE {
+                    input[rand_offset + i] = PackedF::from_fn(|lane| rhos[lane % count][i]);
+                }
+                let output =
+                    poseidon_compress::<PackedF, _, 24, HASH_LEN_FE>(poseidon1_24(), &input);
+                for (lane, rho) in rhos.into_iter().take(count).enumerate() {
+                    let scalar = std::array::from_fn(|i| output[i].as_slice()[lane]);
+                    let chunks = decode_to_chunks::<DIMENSION, BASE, HASH_LEN_FE>(&scalar);
+                    if chunks.iter().map(|&x| x as usize).sum::<usize>() == target {
+                        return Some((rho, chunks.to_vec()));
+                    }
+                }
+            }
+            None
+        };
+        if BASE == 256 {
+            // Bound speculative work to one window. find_first waits for every
+            // earlier block, preserving the scalar search's first valid counter.
+            const WINDOW: usize = 1024;
+            const BLOCK: usize = 64;
+            for start in (0..max_tries).step_by(WINDOW) {
+                let end = (start + WINDOW).min(max_tries);
+                if let Some(result) = (0..(end - start).div_ceil(BLOCK))
+                    .into_par_iter()
+                    .map(|block| {
+                        search(
+                            start + block * BLOCK,
+                            (start + (block + 1) * BLOCK).min(end),
+                        )
+                    })
+                    .find_first(Option::is_some)
+                    .flatten()
+                {
+                    return Some(result);
+                }
+            }
+            None
+        } else {
+            search(0, max_tries)
+        }
+    }
+
     fn apply(
         parameter: &Self::Parameter,
         epoch: u32,
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
     ) -> Result<Vec<u8>, Infallible> {
-        // Compile-time parameter validation for Poseidon Message Hash
-        //
-        // This hash implements Th_msg from DKKW25. It takes:
-        //
-        //   Th_msg(P, T, M, R) = Decode_{p,η',w}(
-        //       PoseidonCompress_{p, t_msg, η'}(R || P || EncT(T) || EncM(M))
-        //   )
-        //
-        // The output is a vector of DIMENSION chunks, each in {0, ..., BASE-1}.
-        // This is used inside the incomparable encoding to map (message, seed)
-        // to a hypercube vertex x ∈ Z_w^v before the target sum filter.
-        //
-        // DKKW25: https://eprint.iacr.org/2025/055
-        const {
-            // Poseidon capacity constraints
-            //
-            // We use Poseidon in compression mode with a width-24 permutation.
-            // The entire input (R || P || T || M) must fit in one call, and
-            // the output η' field elements are extracted from the same state.
-            assert!(
-                PARAMETER_LEN + TWEAK_LEN_FE + RAND_LEN_FE + MSG_LEN_FE <= 24,
-                "Poseidon of width 24 is not enough for the input"
-            );
-            assert!(
-                HASH_LEN_FE <= 24,
-                "Poseidon of width 24 is not enough for the output"
-            );
-
-            // Non-trivial output
-            //
-            // The hash must produce at least one field element to be useful.
-            assert!(
-                HASH_LEN_FE >= 1,
-                "Poseidon Message Hash: HASH_LEN_FE must be at least 1"
-            );
-
-            // Representation constraints
-            //
-            // The Generalized XMSS construction (DKKW25) stores chunk values
-            // and chain indices as u8 in the signature and tweak encodings.
-            // BASE (= w) and DIMENSION (= v) must each fit in one byte.
-            assert!(
-                BASE <= 1 << 8,
-                "Poseidon Message Hash: Base must be at most 2^8"
-            );
-            assert!(
-                DIMENSION <= 1 << 8,
-                "Poseidon Message Hash: Dimension must be at most 2^8"
-            );
-
-            // Encoding well-formedness
-            //
-            // Definition 13 (DKKW25): the incomparable encoding maps into
-            // {0, ..., w-1}^v with w ≥ 2. A single-element alphabet makes
-            // the code trivial and incomparability vacuous.
-            assert!(BASE >= 2, "Poseidon Message Hash: BASE must be at least 2");
-
-            // Injective encoding of inputs
-            //
-            // The message (32 bytes = 256 bits) is encoded into MSG_LEN_FE
-            // field elements via base-p decomposition. For this to be
-            // injective, the output space must be at least as large:
-            //
-            //   p^MSG_LEN_FE  ≥  2^(8 * MESSAGE_LENGTH)
-            //   ⟹  ⌊log2(p)⌋ * MSG_LEN_FE  ≥  8 * MESSAGE_LENGTH
-            let bits_per_fe = F::ORDER_U64.ilog2() as usize;
-            assert!(
-                bits_per_fe * MSG_LEN_FE >= 8 * MESSAGE_LENGTH,
-                "Poseidon Message Hash: not enough field elements to encode the message"
-            );
-
-            // The epoch tweak (DKKW25) packs a u32 epoch and an
-            // 8-bit domain separator into one value, requiring 40 bits total:
-            //
-            //   tweakm(ep) = (0x02 || ep)     ← 8 + 32 = 40 bits
-            //                 sep    epoch
-            //
-            // The field element representation needs enough capacity:
-            //   ⌊log2(p)⌋ * TWEAK_LEN_FE  ≥  40
-            assert!(
-                bits_per_fe * TWEAK_LEN_FE >= 40,
-                "Poseidon Message Hash: not enough field elements to encode the epoch tweak"
-            );
-
-            // Injective decoding to chunks
-            //
-            // The hash output (η' field elements) is decoded via Decode_{p,η',w}
-            // (DKKW25): interpret the η' elements as one big integer
-            // and express it in base w to get DIMENSION chunks.
-            //
-            // For injectivity, the big integer must have enough room:
-            //   p^η'  ≤  w^DIMENSION
-            //   ⟹  ⌊log2(p)⌋ * HASH_LEN_FE  ≤  DIMENSION * ⌈log2(w)⌉
-            let chunk_size = (usize::BITS - (BASE - 1).leading_zeros()) as usize;
-            assert!(
-                bits_per_fe * HASH_LEN_FE <= DIMENSION * chunk_size,
-                "Poseidon Message Hash: not enough chunks to decode the hash output"
-            );
-        }
+        let () = Self::PARAMETER_CHECK;
 
         let hash_fe = poseidon_message_hash_fe::<
             PARAMETER_LEN,
@@ -312,6 +433,69 @@ mod tests {
     use proptest::prelude::*;
     use rand::RngExt;
     use std::collections::HashMap;
+
+    fn reference_chunks<const D: usize, const B: usize>(input: &[F; 5]) -> [u8; D] {
+        let mut acc = BigUint::ZERO;
+        for fe in input {
+            acc = acc * F::ORDER_U64 + fe.as_canonical_biguint();
+        }
+        std::array::from_fn(|_| {
+            let digit = (&acc % B).try_into().unwrap();
+            acc /= B;
+            digit
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn fixed_limbs_match_biguint(values in prop::array::uniform5(0u32..F::ORDER_U32)) {
+            let input = values.map(F::new);
+            // Include chunks beyond the integer's bit length and widths which
+            // cross limb boundaries, plus the non-power-of-two fallback.
+            prop_assert_eq!(decode_to_chunks::<163, 2, 5>(&input), reference_chunks::<163, 2>(&input));
+            prop_assert_eq!(decode_to_chunks::<78, 4, 5>(&input), reference_chunks::<78, 4>(&input));
+            prop_assert_eq!(decode_to_chunks::<39, 16, 5>(&input), reference_chunks::<39, 16>(&input));
+            prop_assert_eq!(decode_to_chunks::<20, 256, 5>(&input), reference_chunks::<20, 256>(&input));
+            prop_assert_eq!(decode_to_chunks::<60, 8, 5>(&input), reference_chunks::<60, 8>(&input));
+            prop_assert_eq!(decode_to_chunks::<40, 32, 5>(&input), reference_chunks::<40, 32>(&input));
+            prop_assert_eq!(decode_to_chunks::<80, 3, 5>(&input), reference_chunks::<80, 3>(&input));
+        }
+    }
+
+    #[test]
+    fn batched_search_matches_first_scalar_counter_and_limit() {
+        use crate::symmetric::prf::{Pseudorandom, shake_to_field::ShakePRFtoF};
+        use rand::{SeedableRng, rngs::StdRng};
+        type MH = PoseidonMessageHash<5, 6, 5, 20, 256, 2, 9>;
+        type PRF = ShakePRFtoF<7, 6>;
+        let mut rng = StdRng::seed_from_u64(42);
+        let parameter = FieldArray(rng.random::<[F; 5]>());
+        let key = PRF::key_gen(&mut rng);
+        for epoch in 0..4 {
+            let message = rng.random();
+            let randomness =
+                |counter| FieldArray(PRF::get_randomness(&key, epoch, &message, counter));
+            for limit in [0, 1, 3, 4, 5, 127, 128, 129, 1023, 1024, 1025, 4096] {
+                let expected = (0..limit).find_map(|counter| {
+                    let rho = randomness(counter as u64);
+                    let chunks = MH::apply(&parameter, epoch, &rho, &message).unwrap();
+                    (chunks.iter().map(|&x| x as usize).sum::<usize>() == 2550)
+                        .then_some((rho, chunks))
+                });
+                assert_eq!(
+                    MH::find_target_sum(&parameter, &message, epoch, 2550, limit, &randomness),
+                    expected
+                );
+            }
+            // Counter zero must also be eligible, including a one-trial limit.
+            let chunks = MH::apply(&parameter, epoch, &randomness(0), &message).unwrap();
+            let target = chunks.iter().map(|&x| x as usize).sum();
+            assert_eq!(
+                MH::find_target_sum(&parameter, &message, epoch, target, 1, &randomness),
+                Some((randomness(0), chunks))
+            );
+        }
+    }
 
     #[test]
     fn test_apply() {

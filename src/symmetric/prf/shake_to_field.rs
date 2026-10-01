@@ -1,7 +1,7 @@
 use crate::F;
 
 use super::Pseudorandom;
-use p3_field::PrimeCharacteristicRing;
+use p3_field::{PrimeCharacteristicRing, PrimeField64};
 use serde::{Serialize, de::DeserializeOwned};
 use sha3::{
     Shake128,
@@ -17,6 +17,12 @@ const PRF_DOMAIN_SEP: [u8; 16] = [
 ];
 const PRF_DOMAIN_SEP_DOMAIN_ELEMENT: [u8; 1] = [0x00];
 const PRF_DOMAIN_SEP_RANDOMNESS: [u8; 1] = [0x01];
+
+fn field_from_u128(value: u128) -> F {
+    // Reduce two 64-bit halves instead of calling the generic 128-bit divider.
+    const TWO_TO_64_MOD_P: u64 = ((1u128 << 64) % F::ORDER_U64 as u128) as u64;
+    F::from_u64((value >> 64) as u64) * F::from_u64(TWO_TO_64_MOD_P) + F::from_u64(value as u64)
+}
 
 /// A pseudorandom function mapping to field elements.
 /// It is implemented using Shake128.
@@ -68,7 +74,7 @@ where
             xof_reader.read(&mut buf);
 
             // Mapping bytes to a field element
-            F::from_u128(u128::from_be_bytes(buf))
+            field_from_u128(u128::from_be_bytes(buf))
         })
     }
 
@@ -112,8 +118,31 @@ where
             xof_reader.read(&mut buf);
 
             // Mapping bytes to a field element
-            F::from_u128(u128::from_be_bytes(buf))
+            field_from_u128(u128::from_be_bytes(buf))
         })
+    }
+
+    fn randomness_generator<'a>(
+        key: &'a Self::Key,
+        epoch: u32,
+        message: &'a [u8; crate::MESSAGE_LENGTH],
+    ) -> impl Fn(u64) -> Self::Randomness + Sync + 'a {
+        let mut prefix = Shake128::default();
+        prefix.update(&PRF_DOMAIN_SEP);
+        prefix.update(&PRF_DOMAIN_SEP_RANDOMNESS);
+        prefix.update(key);
+        prefix.update(&epoch.to_be_bytes());
+        prefix.update(message);
+        move |counter| {
+            let mut hasher = prefix.clone();
+            hasher.update(&counter.to_be_bytes());
+            let mut reader = hasher.finalize_xof();
+            std::array::from_fn(|_| {
+                let mut bytes = [0u8; PRF_BYTES_PER_FE];
+                reader.read(&mut bytes);
+                field_from_u128(u128::from_be_bytes(bytes))
+            })
+        }
     }
 }
 
@@ -126,6 +155,20 @@ mod tests {
     const DOMAIN_LEN: usize = 4;
     const RAND_LEN: usize = 4;
     type PRF = ShakePRFtoF<DOMAIN_LEN, RAND_LEN>;
+
+    proptest! {
+        #[test]
+        fn split_reduction_matches_u128(value in any::<u128>()) {
+            prop_assert_eq!(field_from_u128(value), F::from_u128(value));
+        }
+
+        #[test]
+        fn prepared_randomness_matches_scalar(key in prop::array::uniform32(any::<u8>()),
+            message in prop::array::uniform32(any::<u8>()), epoch in any::<u32>(), counter in any::<u64>()) {
+            let generate = PRF::randomness_generator(&key, epoch, &message);
+            prop_assert_eq!(generate(counter), PRF::get_randomness(&key, epoch, &message, counter));
+        }
+    }
 
     #[test]
     fn test_shake_to_field_prf_key_not_all_same() {

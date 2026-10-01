@@ -55,6 +55,27 @@ impl<MH: MessageHash, const TARGET_SUM: usize> IncomparableEncoding
         MH::rand(rng)
     }
 
+    fn find_encoding(
+        parameter: &Self::Parameter,
+        message: &[u8; MESSAGE_LENGTH],
+        epoch: u32,
+        randomness: impl Fn(u64) -> Self::Randomness + Sync,
+    ) -> Option<(Self::Randomness, Vec<u8>)> {
+        // Use encode once to retain its compile-time parameter checks.
+        let rho = randomness(0);
+        if let Ok(chunks) = Self::encode(parameter, message, &rho, epoch) {
+            return Some((rho, chunks));
+        }
+        MH::find_target_sum(
+            parameter,
+            message,
+            epoch,
+            TARGET_SUM,
+            Self::MAX_TRIES - 1,
+            |counter| randomness(counter + 1),
+        )
+    }
+
     fn encode(
         parameter: &Self::Parameter,
         message: &[u8; MESSAGE_LENGTH],

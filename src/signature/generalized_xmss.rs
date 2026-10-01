@@ -876,39 +876,15 @@ where
         let path = combined_path(&sk.top_tree, bottom_tree, epoch);
 
         // now, we need to encode our message using the incomparable encoding.
-        // we retry until we get a valid codeword, or until we give up.
-        let max_tries = IE::MAX_TRIES;
-        let mut attempts = 0;
-        let mut x = None;
-        let mut rho = None;
-        while attempts < max_tries {
-            // get a randomness and try to encode the message. Note: we get the randomness from the PRF
-            // which ensures that signing is deterministic. The PRF is applied to the message and the epoch.
-            // While the intention is that users of the scheme never call sign twice with the same (epoch, sk) pair,
-            // this deterministic approach ensures that calling sign twice is fine, as long as the message stays the same.
-            let curr_rho = PRF::get_randomness(&sk.prf_key, epoch, message, attempts as u64).into();
-            let curr_x = IE::encode(&sk.parameter.into(), message, &curr_rho, epoch);
-
-            // check if we have found a valid codeword, and if so, stop searching
-            if curr_x.is_ok() {
-                rho = Some(curr_rho);
-                x = curr_x.ok();
-                break;
-            }
-
-            attempts += 1;
-        }
-
-        // if we have not found a valid codeword, return an error
-        if x.is_none() {
-            return Err(SigningError::EncodingAttemptsExceeded {
-                attempts: max_tries,
-            });
-        }
-
-        // otherwise, unwrap x and rho
-        let x = x.unwrap();
-        let rho = rho.unwrap();
+        // Search in counter order, allowing the encoding to prepare invariant
+        // inputs and batch retries while retaining deterministic signatures.
+        let randomness = PRF::randomness_generator(&sk.prf_key, epoch, message);
+        let (rho, x) = IE::find_encoding(&sk.parameter.into(), message, epoch, |counter| {
+            randomness(counter).into()
+        })
+        .ok_or(SigningError::EncodingAttemptsExceeded {
+            attempts: IE::MAX_TRIES,
+        })?;
 
         // we will include rho in the signature, and
         // we use x to determine how far the signer walks in the chains
@@ -918,17 +894,7 @@ where
             "Encoding is broken: returned too many or too few chunks."
         );
 
-        // In parallel, compute the hash values for each chain based on the codeword `x`.
-        let hashes = (0..num_chains)
-            .into_par_iter()
-            .map(|chain_index| {
-                // get back to the start of the chain from the PRF
-                let start = PRF::get_domain_element(&sk.prf_key, epoch, chain_index as u64).into();
-                // now walk the chain for a number of steps determined by the current chunk of x
-                let steps = x[chain_index] as usize;
-                chain::<TH>(&sk.parameter, epoch, chain_index as u8, 0, steps, &start)
-            })
-            .collect();
+        let hashes = TH::sign_chains::<PRF>(&sk.prf_key, &sk.parameter, epoch, &x);
 
         // assemble the signature: Merkle path, randomness, chain elements
         Ok(GeneralizedXMSSSignature { path, rho, hashes })
@@ -1093,6 +1059,31 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn signing_matches_pre_optimization_fingerprint() {
+        use super::instantiations_poseidon::lifetime_2_to_the_18::target_sum::SIGTargetSumLifetime18W8NoOff as S;
+        use rand::{SeedableRng, rngs::StdRng};
+        use sha3::{Digest, Sha3_256};
+        let mut rng = StdRng::seed_from_u64(0x01ea_0516);
+        let (pk, sk) = S::key_gen(&mut rng, 0, 1024);
+        let inputs: Vec<(u32, [u8; MESSAGE_LENGTH])> = sk
+            .get_prepared_interval()
+            .map(|epoch| (epoch as u32, rng.random()))
+            .collect();
+        let mut digest = Sha3_256::new();
+        for (epoch, message) in inputs.iter().take(16) {
+            let signature = S::sign(&sk, *epoch, message).unwrap();
+            assert!(S::verify(&pk, *epoch, message, &signature));
+            digest.update(signature.to_bytes());
+        }
+        // Captured from the original implementation with this Cargo.lock,
+        // seed, activation interval, and ordered message corpus.
+        assert_eq!(
+            format!("{:x}", digest.finalize()),
+            "ce6c42afc1bb5fa2af80d33e80b583d57d68612c429eda1dff29db545b99242e"
+        );
+    }
 
     use crate::array::FieldArray;
     use p3_field::PrimeField32;

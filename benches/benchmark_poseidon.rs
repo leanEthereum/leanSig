@@ -24,6 +24,8 @@ use leansig::{
     },
 };
 
+type VerificationFixture<T> = (u32, [u8; MESSAGE_LENGTH], T);
+
 /// A template for benchmarking signature schemes (key gen, signing, verification)
 pub fn benchmark_signature_scheme<S: SignatureScheme>(c: &mut Criterion, description: &str) {
     let mut group = c.benchmark_group(format!("Poseidon: {description}"));
@@ -47,7 +49,10 @@ pub fn benchmark_signature_scheme<S: SignatureScheme>(c: &mut Criterion, descrip
 
     group.sample_size(100);
 
-    let (pk, sk) = S::key_gen(&mut rng, 0, S::LIFETIME as usize);
+    // Signing only needs the two prepared bottom trees. Keep the full tree
+    // height, but avoid generating every epoch before a filtered benchmark.
+    let active_epochs = 2 * (S::LIFETIME as usize).isqrt();
+    let (pk, sk) = S::key_gen(&mut rng, 0, active_epochs);
 
     // Get the prepared epoch interval to ensure we only sign at valid epochs
     let prepared_interval = sk.get_prepared_interval();
@@ -62,24 +67,29 @@ pub fn benchmark_signature_scheme<S: SignatureScheme>(c: &mut Criterion, descrip
                 rng.random_range(prepared_interval.start as u32..prepared_interval.end as u32);
 
             // Benchmark signing
-            let _ = S::sign(black_box(&sk), black_box(epoch), black_box(&message));
+            black_box(
+                S::sign(black_box(&sk), black_box(epoch), black_box(&message))
+                    .expect("Signing should succeed"),
+            );
         });
     });
 
-    // Pre-generate messages, epochs, and signatures for verification
-    let precomputed: Vec<(u32, [u8; MESSAGE_LENGTH], S::Signature)> = (0..2000)
-        .map(|_| {
-            let message = rng.random();
-            // Use epochs within the prepared interval
-            let epoch =
-                rng.random_range(prepared_interval.start as u32..prepared_interval.end as u32);
-            let signature = S::sign(&sk, epoch, &message).expect("Signing should succeed");
-            (epoch, message, signature)
-        })
-        .collect();
-
-    // Verification benchmark
+    // Construct verification fixtures only when this benchmark is selected,
+    // outside the timed iterations. A signing-only profile skips this work.
+    let mut verification_fixtures: Option<Vec<VerificationFixture<S::Signature>>> = None;
     group.bench_function("- verify", |b| {
+        let precomputed = verification_fixtures.get_or_insert_with(|| {
+            (0..2000)
+                .map(|_| {
+                    let message = rng.random();
+                    // Use epochs within the prepared interval
+                    let epoch = rng
+                        .random_range(prepared_interval.start as u32..prepared_interval.end as u32);
+                    let signature = S::sign(&sk, epoch, &message).expect("Signing should succeed");
+                    (epoch, message, signature)
+                })
+                .collect()
+        });
         b.iter(|| {
             // Randomly pick a precomputed signature to verify
             let (epoch, message, signature) =
