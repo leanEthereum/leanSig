@@ -126,7 +126,10 @@ pub mod lifetime_2_to_the_18 {
         /// and target sum set at 1.1 * expectation (10% offset)
         ///
         /// Note: with chunk size w = 8, chains are very long. This leads to high variance
-        /// and so signing may fail from time to time. It is not recommended to use this.
+        /// and so signing may fail from time to time. With the current 100,000-attempt cap,
+        /// the target 2805 variant has an abort probability of about 2^-89 per signature,
+        /// or at most about 2^-71 across its 2^18 lifetime by a union bound. This alias is
+        /// retained for comparative benchmarks and is not a 128-bit lifetime-abort parameter.
         pub type SIGTargetSumLifetime18W8Off10 =
             GeneralizedXMSSSignatureScheme<PRFw8, IEw8<2805>, THw8, LOG_LIFETIME>;
 
@@ -327,7 +330,10 @@ pub mod lifetime_2_to_the_20 {
         /// and target sum set at 1.1 * expectation (10% offset)
         ///
         /// Note: with chunk size w = 8, chains are very long. This leads to high variance
-        /// and so signing may fail from time to time. It is not recommended to use this.
+        /// and so signing may fail from time to time. With the current 100,000-attempt cap,
+        /// the target 2805 variant has an abort probability of about 2^-89 per signature,
+        /// or at most about 2^-69 across its 2^20 lifetime by a union bound. This alias is
+        /// retained for comparative benchmarks and is not a 128-bit lifetime-abort parameter.
         pub type SIGTargetSumLifetime20W8Off10 =
             GeneralizedXMSSSignatureScheme<PRFw8, IEw8<2805>, THw8, LOG_LIFETIME>;
 

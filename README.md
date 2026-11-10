@@ -95,6 +95,7 @@ cargo bench
 
 The schemes that are benchmarked are hardcoded instantiations of the generic framework, which are defined in `leansig::signature::generalized_xmss`.
 The parameters of these instantiations have been chosen carefully with the aim to achieve a desired security level.
+Exceptions retained only for comparison are marked directly on their aliases; in particular, the Poseidon target-sum W8 offset variants are not recommended as lifetime-abort parameters.
 By default, key generation is not benchmarked. There are two options to benchmark it:
 1. add the option `--features with-gen-benches-poseidon` or `--features with-gen-benches-poseidon-top-level` to `cargo bench`. Note that this will make benchmarks very slow, as key generation will be repeated within the benchmarks. Especially for Poseidon, this is not recommended.
 2. use code similar to the one provided in `src/bin/main.rs` and run it with `cargo run --release`.
