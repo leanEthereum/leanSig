@@ -1100,10 +1100,28 @@ mod tests {
 
     use crate::{F, symmetric::tweak_hash::poseidon::PoseidonTweakHash};
     use p3_field::RawDataSerializable;
-    use rand::{RngExt, rng};
+    use rand::{RngExt, SeedableRng, rng, rngs::StdRng};
     use ssz::{Decode, Encode};
 
     type TestTH = PoseidonTweakHash<5, 7, 2, 9, 155>;
+
+    #[test]
+    fn test_lifetime_two_all_epochs() {
+        type PRF = ShakePRFtoF<8, 7>;
+        type MH = AbortingHypercubeMessageHash<5, 7, 8, 46, 8, 8, 127, 2, 9>;
+        type IE = TargetSumEncoding<MH, 200>;
+        type TH = PoseidonTweakHash<5, 8, 2, 9, 46>;
+        type Sig = GeneralizedXMSSSignatureScheme<PRF, IE, TH, 2>;
+
+        let mut rng = StdRng::seed_from_u64(0x4656_4d53);
+        let (pk, sk) = Sig::key_gen(&mut rng, 0, Sig::LIFETIME as usize);
+        let message = rng.random();
+
+        for epoch in 0..Sig::LIFETIME as u32 {
+            let signature = Sig::sign(&sk, epoch, &message).unwrap();
+            assert!(Sig::verify(&pk, epoch, &message, &signature));
+        }
+    }
 
     #[test]
     pub fn test_target_sum_poseidon() {
