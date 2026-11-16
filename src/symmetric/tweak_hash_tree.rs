@@ -447,8 +447,8 @@ where
         leafs: Vec<TH::Domain>,
     ) -> Self {
         assert!(
-            depth > 2 && depth.is_multiple_of(2),
-            "Hash-Tree new bottom tree: Depth must be even and more than 2."
+            depth >= 2 && depth.is_multiple_of(2),
+            "Hash-Tree new bottom tree: Depth must be even and at least 2."
         );
 
         assert!(
